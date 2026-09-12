@@ -64,9 +64,28 @@ PLIST
 # "resource fork, Finder information, or similar detritus not allowed".
 xattr -cr "$STAGE"
 
-# Stable ad-hoc identity, so macOS does not treat each rebuild as a brand new
-# app and re-ask for drive access every time.
-codesign --force --sign - --identifier app.rollscrub.RollScrub "$STAGE"
+# A Developer ID certificate when one is installed, ad-hoc otherwise so local
+# builds keep working. Only a Developer ID signature carrying the hardened
+# runtime can be notarized, and Apple's timestamp server has to be reachable —
+# an un-timestamped signature stops validating the day the certificate expires.
+#
+# The identifier is pinned either way: macOS keys granted folder access to it,
+# and letting it drift makes every rebuild re-ask for your drives.
+SIGN_IDENTITY="${SIGN_IDENTITY:-$(
+  security find-identity -v -p codesigning |
+    awk -F'"' '/Developer ID Application/ { print $2; exit }'
+)}"
+
+if [ -n "$SIGN_IDENTITY" ]; then
+  codesign --force --options runtime --timestamp \
+    --identifier app.rollscrub.RollScrub \
+    --sign "$SIGN_IDENTITY" "$STAGE"
+  echo "signed: $SIGN_IDENTITY"
+else
+  codesign --force --sign - --identifier app.rollscrub.RollScrub "$STAGE"
+  echo "signed: ad-hoc — fine on this Mac, but not distributable and not notarizable."
+  echo "        Install a Developer ID Application certificate to ship it."
+fi
 
 if [ ! -w "$DEST" ]; then
   DEST="$HOME/Applications"
