@@ -35,6 +35,28 @@ final class MoverTests: XCTestCase {
         DuplicateGroup(kind: .photo, size: size, keep: keep.path, remove: remove.map(\.path))
     }
 
+    /// A root reached through a symlink — /tmp and /var both are on macOS.
+    /// Enumeration reports files at their resolved paths, so a root kept
+    /// unresolved matches none of them and every file is skipped as "outside
+    /// every scan root": `--move` reports success having moved nothing.
+    func testMovesFilesWhenTheRootIsReachedThroughASymlink() throws {
+        let keep = try write("Photos/keep.jpg", "same bytes")
+        let dupe = try write("Photos/keep copy.jpg", "same bytes")
+
+        let link = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RollScrubLink-\(UUID().uuidString)")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: root)
+        defer { try? FileManager.default.removeItem(at: link) }
+
+        let outcome = try Mover(root: link).move(groups: [group(keep: keep, remove: [dupe])])
+
+        XCTAssertEqual(outcome.skipped.count, 0,
+                       "a symlinked root must not put every file outside itself")
+        XCTAssertEqual(outcome.moved.count, 1)
+        XCTAssertFalse(exists(dupe), "the duplicate should have been set aside")
+        XCTAssertTrue(exists(keep))
+    }
+
     // MARK: - The happy path
 
     func testMovesRedundantCopyAndPreservesStructure() throws {

@@ -13,7 +13,21 @@ struct RollScrubApp: App {
         }
         .windowToolbarStyle(.unified)
         .commands {
-            CommandGroup(replacing: .newItem) {}
+            // Starting another scan was reachable only from a toolbar icon and
+            // from the screen you see once a review is finished — so mid-review
+            // there was no way to point RollScrub somewhere else, and ⌘O, where
+            // everyone looks first, did nothing.
+            CommandGroup(replacing: .newItem) {
+                Button("Scan Folders…") {
+                    NotificationCenter.default.post(name: .scanFolders, object: nil)
+                }
+                .keyboardShortcut("o")
+
+                Button("Open an Earlier Scan's Manifest…") {
+                    NotificationCenter.default.post(name: .openManifest, object: nil)
+                }
+                .keyboardShortcut("o", modifiers: [.command, .shift])
+            }
 
             CommandGroup(replacing: .appInfo) {
                 Button("About RollScrub") { openWindow(id: "about") }

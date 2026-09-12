@@ -2,21 +2,51 @@ import RollScrubCore
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Menu commands live on the Scene and the panels they open live in the view,
+/// so the two are bridged by name rather than by threading the whole session
+/// and scanner up into the App.
+extension Notification.Name {
+    static let scanFolders = Notification.Name("RollScrub.scanFolders")
+    static let openManifest = Notification.Name("RollScrub.openManifest")
+}
+
 struct ContentView: View {
     @ObservedObject var session: ReviewSession
     @StateObject private var scanner = ScanCoordinator()
     @State private var showApplyConfirmation = false
+    /// Hidden until there is a review to show. Before a scan the sidebar holds
+    /// an empty list under a filter reading "(0)", and it pushes the welcome
+    /// screen off the window's centre for no gain.
+    @State private var columns: NavigationSplitViewVisibility = .detailOnly
+
+    /// A loaded scan is not the same as something to review: a scan that finds
+    /// nothing loads a session with no pairs in it, and the sidebar and status
+    /// bar then frame an empty list with "0 to review" and "Apply 0 decisions".
+    private var hasReview: Bool {
+        session.isLoaded && !session.items.isEmpty
+    }
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columns) {
             sidebar
                 .navigationSplitViewColumnWidth(min: 280, ideal: 330, max: 460)
         } detail: {
             detail
         }
+        .onChange(of: hasReview, initial: true) { _, review in
+            columns = review ? .all : .detailOnly
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .scanFolders)) { _ in
+            guard !scanner.isScanning else { return }
+            chooseFolderToScan()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openManifest)) { _ in
+            guard !scanner.isScanning else { return }
+            chooseFolder()
+        }
         .toolbar { toolbarContent }
         .safeAreaInset(edge: .bottom) {
-            if session.isLoaded && !scanner.isScanning { statusBar }
+            if hasReview && !scanner.isScanning { statusBar }
         }
         .alert("Move to Trash?", isPresented: $showApplyConfirmation) {
             Button("Cancel", role: .cancel) {}
@@ -201,33 +231,50 @@ struct ContentView: View {
         .padding(40)
     }
 
+    /// Width shared by every line of prose here, so the block reads as one
+    /// centred column. Hard line breaks were doing this job before and got it
+    /// wrong — they fix the ragged edge at whatever the author's window
+    /// happened to be, and one line ran far wider than the two above it.
+    private static let welcomeColumn: CGFloat = 430
+
     private var welcome: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 20) {
             Image(nsImage: NSApplication.shared.applicationIconImage)
                 .resizable()
                 .interpolation(.high)
                 .frame(width: 84, height: 84)
-            Text("Find duplicate photos and videos").font(.title2.weight(.semibold))
-            Text("Pick one or more folders or drives. RollScrub compares every\n"
-                 + "candidate byte for byte across all of them, then shows you\n"
-                 + "each pair side by side. Nothing is moved or deleted until you say so.")
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
+
+            VStack(spacing: 10) {
+                Text("Find duplicate photos and videos")
+                    .font(.title2.weight(.semibold))
+                Text("Pick one or more folders or drives. RollScrub compares every "
+                     + "candidate byte for byte across all of them, then shows you each "
+                     + "pair side by side. Nothing is moved or deleted until you say so.")
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(width: Self.welcomeColumn)
+
             Text("To pick more than one: navigate to a folder that contains "
                  + "them (e.g. your home folder), then ⌘-click each one before "
                  + "choosing Scan.")
                 .font(.caption)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.tertiary)
-                .frame(maxWidth: 360)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(width: Self.welcomeColumn)
 
-            Button("Scan Folders…") { chooseFolderToScan() }
-                .controlSize(.large)
-                .buttonStyle(.borderedProminent)
+            VStack(spacing: 10) {
+                Button("Scan Folders…") { chooseFolderToScan() }
+                    .controlSize(.large)
+                    .buttonStyle(.borderedProminent)
 
-            Button("Open an Earlier Scan's Manifest…") { chooseFolder() }
-                .controlSize(.small)
-                .buttonStyle(.link)
+                Button("Open an Earlier Scan's Manifest…") { chooseFolder() }
+                    .controlSize(.small)
+                    .buttonStyle(.link)
+            }
+            .padding(.top, 4)
         }
         .padding(40)
     }
@@ -266,8 +313,9 @@ struct ContentView: View {
             Button {
                 chooseFolderToScan()
             } label: {
-                Label("Scan Folder", systemImage: "magnifyingglass")
+                Label("Scan Folders", systemImage: "magnifyingglass")
             }
+            .help("Scan other folders for duplicates (⌘O)")
             .disabled(scanner.isScanning)
         }
         // Symbols rather than text, the way Finder, Mail and Preview do it:

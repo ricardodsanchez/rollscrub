@@ -60,9 +60,16 @@ public final class Mover {
         reviewDirectoryName: String = SkipRules.reviewDirectoryName,
         progress: ((MoveProgress) -> Void)? = nil
     ) {
+        // Symlinks are resolved, not merely standardized. Enumeration reports
+        // files at their resolved paths, so a root given as /tmp or /var —
+        // both symlinks on macOS — never prefix-matches the /private/... paths
+        // coming back, and every single file is skipped as outside the root.
+        //
         // Longest path first, so a root nested inside another root (an
         // unusual but valid thing to pass) is matched before its parent.
-        self.roots = roots.map { $0.standardized }.sorted { $0.path.count > $1.path.count }
+        self.roots = roots
+            .map { $0.resolvingSymlinksInPath().standardized }
+            .sorted { $0.path.count > $1.path.count }
         self.reviewDirectoryName = reviewDirectoryName
         self.progress = progress
     }
@@ -207,7 +214,10 @@ public final class Mover {
     /// The root a path was found under, and its path relative to that root.
     /// `roots` is sorted longest-first so a nested root wins over its parent.
     private func rootAndRelativePath(of path: String) -> (URL, String)? {
-        let standardizedPath = URL(fileURLWithPath: path).standardized.path
+        // Resolved the same way the roots are, so both sides of the prefix
+        // comparison are in the same namespace.
+        let standardizedPath = URL(fileURLWithPath: path)
+            .resolvingSymlinksInPath().standardized.path
         for root in roots {
             var prefix = root.path
             if !prefix.hasSuffix("/") { prefix += "/" }
