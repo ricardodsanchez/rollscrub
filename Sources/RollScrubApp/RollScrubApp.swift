@@ -1,12 +1,12 @@
 import SwiftUI
 
 @main
-struct DupSweepApp: App {
+struct RollScrubApp: App {
     // Owned here so the menu bar can drive the same session the window shows.
     @StateObject private var session = ReviewSession()
 
     var body: some Scene {
-        Window("DupSweep Review", id: "review") {
+        Window("RollScrub Review", id: "review") {
             ContentView(session: session)
         }
         .windowToolbarStyle(.unified)

@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import DupSweepCore
+@testable import RollScrubCore
 
 final class KeepSelectorTests: XCTestCase {
 

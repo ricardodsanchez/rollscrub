@@ -1,18 +1,18 @@
 import XCTest
 
-@testable import DupSweepApp
-@testable import DupSweepCore
+@testable import RollScrubApp
+@testable import RollScrubCore
 
 /// Previews are the whole point of the review window, and RAW is 83% of this
 /// library — so this checks real ARW/DNG/MP4 files off the drive rather than
 /// trusting that QuickLook "probably handles it".
-///   DUPSWEEP_MANIFEST=/path/to/manifest.json swift test --filter ThumbnailLoader
+///   ROLLSCRUB_MANIFEST=/path/to/manifest.json swift test --filter ThumbnailLoader
 @MainActor
 final class ThumbnailLoaderTests: XCTestCase {
 
     private func manifestItems() throws -> [ReviewItem] {
-        guard let path = ProcessInfo.processInfo.environment["DUPSWEEP_MANIFEST"] else {
-            throw XCTSkip("set DUPSWEEP_MANIFEST to a real manifest")
+        guard let path = ProcessInfo.processInfo.environment["ROLLSCRUB_MANIFEST"] else {
+            throw XCTSkip("set ROLLSCRUB_MANIFEST to a real manifest")
         }
         let session = ReviewSession()
         session.load(manifestURL: URL(fileURLWithPath: path))

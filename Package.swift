@@ -2,19 +2,19 @@
 import PackageDescription
 
 let package = Package(
-    name: "DupSweep",
+    name: "RollScrub",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "dupsweep", targets: ["dupsweep"]),
-        .executable(name: "DupSweepApp", targets: ["DupSweepApp"]),
-        .library(name: "DupSweepCore", targets: ["DupSweepCore"]),
+        .executable(name: "rollscrub", targets: ["rollscrub"]),
+        .executable(name: "RollScrubApp", targets: ["RollScrubApp"]),
+        .library(name: "RollScrubCore", targets: ["RollScrubCore"]),
     ],
     targets: [
-        .target(name: "DupSweepCore"),
-        .executableTarget(name: "dupsweep", dependencies: ["DupSweepCore"]),
+        .target(name: "RollScrubCore"),
+        .executableTarget(name: "rollscrub", dependencies: ["RollScrubCore"]),
         .executableTarget(
-            name: "DupSweepApp",
-            dependencies: ["DupSweepCore"],
+            name: "RollScrubApp",
+            dependencies: ["RollScrubCore"],
             // SwiftPM does not autolink these, and SwiftUI's VideoPlayer aborts
             // at runtime if AVKit's AVPlayerView class cannot be resolved.
             linkerSettings: [
@@ -22,6 +22,6 @@ let package = Package(
                 .linkedFramework("AVFoundation"),
                 .linkedFramework("QuickLookThumbnailing"),
             ]),
-        .testTarget(name: "DupSweepCoreTests", dependencies: ["DupSweepCore", "DupSweepApp"]),
+        .testTarget(name: "RollScrubCoreTests", dependencies: ["RollScrubCore", "RollScrubApp"]),
     ]
 )

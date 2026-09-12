@@ -1,21 +1,21 @@
 import SwiftUI
 import XCTest
 
-@testable import DupSweepApp
-@testable import DupSweepCore
+@testable import RollScrubApp
+@testable import RollScrubCore
 
 /// Renders the comparison view offscreen to a PNG so the layout can be
 /// inspected without a display. Opt in with:
-///   DUPSWEEP_SNAPSHOT_DIR=/some/dir swift test --filter LayoutSnapshot
+///   ROLLSCRUB_SNAPSHOT_DIR=/some/dir swift test --filter LayoutSnapshot
 @MainActor
 final class LayoutSnapshotTests: XCTestCase {
 
     func testRenderComparisonView() async throws {
-        guard let directory = ProcessInfo.processInfo.environment["DUPSWEEP_SNAPSHOT_DIR"] else {
-            throw XCTSkip("set DUPSWEEP_SNAPSHOT_DIR to render snapshots")
+        guard let directory = ProcessInfo.processInfo.environment["ROLLSCRUB_SNAPSHOT_DIR"] else {
+            throw XCTSkip("set ROLLSCRUB_SNAPSHOT_DIR to render snapshots")
         }
-        let manifestPath = ProcessInfo.processInfo.environment["DUPSWEEP_MANIFEST"]
-        try XCTSkipIf(manifestPath == nil, "set DUPSWEEP_MANIFEST to a real manifest")
+        let manifestPath = ProcessInfo.processInfo.environment["ROLLSCRUB_MANIFEST"]
+        try XCTSkipIf(manifestPath == nil, "set ROLLSCRUB_MANIFEST to a real manifest")
 
         let session = ReviewSession()
         session.load(manifestURL: URL(fileURLWithPath: manifestPath!))

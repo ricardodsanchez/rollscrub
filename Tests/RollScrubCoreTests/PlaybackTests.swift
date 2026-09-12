@@ -1,18 +1,18 @@
 import AVFoundation
 import XCTest
 
-@testable import DupSweepApp
-@testable import DupSweepCore
+@testable import RollScrubApp
+@testable import RollScrubCore
 
 /// Playback is the one thing in the review window that cannot be checked from
 /// a snapshot, so it is checked here against the real clips on the drive.
-///   DUPSWEEP_MANIFEST=/path/to/manifest.json swift test --filter Playback
+///   ROLLSCRUB_MANIFEST=/path/to/manifest.json swift test --filter Playback
 @MainActor
 final class PlaybackTests: XCTestCase {
 
     private func firstVideoPair() throws -> (kept: URL, parked: URL) {
-        guard let path = ProcessInfo.processInfo.environment["DUPSWEEP_MANIFEST"] else {
-            throw XCTSkip("set DUPSWEEP_MANIFEST to a real manifest")
+        guard let path = ProcessInfo.processInfo.environment["ROLLSCRUB_MANIFEST"] else {
+            throw XCTSkip("set ROLLSCRUB_MANIFEST to a real manifest")
         }
         let session = ReviewSession()
         session.load(manifestURL: URL(fileURLWithPath: path))

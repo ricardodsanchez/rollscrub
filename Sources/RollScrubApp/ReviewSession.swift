@@ -1,5 +1,5 @@
 import CryptoKit
-import DupSweepCore
+import RollScrubCore
 import Foundation
 import SwiftUI
 
@@ -28,7 +28,7 @@ struct ReviewItem: Identifiable {
     enum Origin {
         /// Found by a scan and still sitting in the library.
         case inPlace
-        /// Moved aside by an earlier `dupsweep --move`.
+        /// Moved aside by an earlier `rollscrub --move`.
         case parked(MoveRecord)
     }
 
@@ -154,7 +154,7 @@ final class ReviewSession: ObservableObject {
             sourceDescription = url.deletingLastPathComponent().path
             scanSummary = nil
             stateURL = url.deletingLastPathComponent()
-                .appendingPathComponent("_dupsweep_review_state.json")
+                .appendingPathComponent("_rollscrub_review_state.json")
             applySavedDecisions()
             isLoaded = true
             errorMessage = nil
@@ -171,11 +171,11 @@ final class ReviewSession: ObservableObject {
 
         let matches = (try? FileManager.default.contentsOfDirectory(
             at: reviewDir, includingPropertiesForKeys: nil))?
-            .filter { $0.lastPathComponent.hasPrefix("_dupsweep_manifest_") }
+            .filter { $0.lastPathComponent.hasPrefix("_rollscrub_manifest_") }
             .sorted { $0.lastPathComponent > $1.lastPathComponent } ?? []
 
         guard let newest = matches.first else {
-            errorMessage = "No DupSweep manifest found in \(reviewDir.path)"
+            errorMessage = "No RollScrub manifest found in \(reviewDir.path)"
             return
         }
         load(manifestURL: newest)
@@ -414,7 +414,7 @@ final class ReviewSession: ObservableObject {
             for: .applicationSupportDirectory, in: .userDomainMask,
             appropriateFor: nil, create: true)
         else { return nil }
-        let directory = support.appendingPathComponent("DupSweep", isDirectory: true)
+        let directory = support.appendingPathComponent("RollScrub", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory.appendingPathComponent("scan-\(digest).json")
     }

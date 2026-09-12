@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import DupSweepCore
+@testable import RollScrubCore
 
 final class ScannerTests: XCTestCase {
 
@@ -8,7 +8,7 @@ final class ScannerTests: XCTestCase {
 
     override func setUpWithError() throws {
         root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("DupSweepTests-\(UUID().uuidString)")
+            .appendingPathComponent("RollScrubTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     }
 

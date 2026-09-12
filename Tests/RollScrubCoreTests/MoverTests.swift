@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import DupSweepCore
+@testable import RollScrubCore
 
 final class MoverTests: XCTestCase {
 
@@ -9,7 +9,7 @@ final class MoverTests: XCTestCase {
 
     override func setUpWithError() throws {
         root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("DupSweepMove-\(UUID().uuidString)")
+            .appendingPathComponent("RollScrubMove-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         reviewDir = root.appendingPathComponent(SkipRules.reviewDirectoryName)
     }

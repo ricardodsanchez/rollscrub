@@ -242,7 +242,7 @@ public final class Mover {
         let stamp = DateFormatter()
         stamp.dateFormat = "yyyyMMdd-HHmmss"
         let url = reviewDirectory.appendingPathComponent(
-            "_dupsweep_manifest_\(stamp.string(from: Date())).json")
+            "_rollscrub_manifest_\(stamp.string(from: Date())).json")
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

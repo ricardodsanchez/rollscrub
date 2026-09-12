@@ -1,17 +1,17 @@
-import DupSweepCore
+import RollScrubCore
 import Foundation
 
 let usage = """
-dupsweep — find duplicate photos and videos (read-only)
+rollscrub — find duplicate photos and videos (read-only)
 
 USAGE
-  dupsweep <folder> [<folder> ...] [options]
-  dupsweep --undo <manifest.json>
+  rollscrub <folder> [<folder> ...] [options]
+  rollscrub --undo <manifest.json>
 
 OPTIONS
   --include <subdir>   Scan only this subdirectory of each folder given.
                        Repeatable. Omit to scan each whole folder.
-  --out <path>         Report path. Default: ./dupsweep_report.txt
+  --out <path>         Report path. Default: ./rollscrub_report.txt
                        The CSV sidecar is written alongside it as <name>.csv
   --move               After scanning, move every REMOVE file into
                        _duplicates_review/ inside whichever folder it was
@@ -26,10 +26,10 @@ OPTIONS
   -h, --help           This message.
 
 EXAMPLES
-  dupsweep "/Volumes/Extreme Pro" --include Photos --include Video --include 2026
-  dupsweep "/Volumes/Extreme Pro" "/Volumes/Backup" --move
-  dupsweep ~/Pictures "/Volumes/Extreme Pro" ~/Library/Mobile\\ Documents/com~apple~CloudDocs
-  dupsweep --undo "/Volumes/Extreme Pro/_duplicates_review/_dupsweep_manifest_*.json"
+  rollscrub "/Volumes/Extreme Pro" --include Photos --include Video --include 2026
+  rollscrub "/Volumes/Extreme Pro" "/Volumes/Backup" --move
+  rollscrub ~/Pictures "/Volumes/Extreme Pro" ~/Library/Mobile\\ Documents/com~apple~CloudDocs
+  rollscrub --undo "/Volumes/Extreme Pro/_duplicates_review/_rollscrub_manifest_*.json"
 
 Passing more than one folder finds duplicates across all of them, not just
 within each one on its own. Without --move the scan is read-only. With
@@ -46,7 +46,7 @@ func fail(_ message: String) -> Never {
 
 var roots: [String] = []
 var includes: [String] = []
-var outPath = "dupsweep_report.txt"
+var outPath = "rollscrub_report.txt"
 var quiet = false
 var shouldMove = false
 var assumeYes = false
@@ -262,7 +262,7 @@ do {
         print("")
         for manifest in outcome.manifestURLs {
             print("Manifest: \(manifest.path)")
-            print("Undo    : dupsweep --undo \"\(manifest.path)\"")
+            print("Undo    : rollscrub --undo \"\(manifest.path)\"")
         }
     }
     print("")

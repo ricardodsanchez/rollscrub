@@ -1,5 +1,5 @@
 import AVKit
-import DupSweepCore
+import RollScrubCore
 import SwiftUI
 
 /// The two copies side by side. Left is the one being kept, right is the
@@ -264,7 +264,7 @@ struct FilePane: View {
                 if !exists {
                     ContentUnavailableView(
                         "File not found", systemImage: "exclamationmark.triangle",
-                        description: Text("It may have been moved or deleted outside DupSweep."))
+                        description: Text("It may have been moved or deleted outside RollScrub."))
                 } else if let player {
                     VideoPlayer(player: player)
                 } else {

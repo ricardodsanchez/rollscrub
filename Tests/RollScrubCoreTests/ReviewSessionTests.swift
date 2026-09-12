@@ -1,7 +1,7 @@
 import XCTest
 
-@testable import DupSweepApp
-@testable import DupSweepCore
+@testable import RollScrubApp
+@testable import RollScrubCore
 
 @MainActor
 final class ReviewSessionTests: XCTestCase {
@@ -11,7 +11,7 @@ final class ReviewSessionTests: XCTestCase {
 
     override func setUpWithError() throws {
         root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("DupSweepReview-\(UUID().uuidString)")
+            .appendingPathComponent("RollScrubReview-\(UUID().uuidString)")
         reviewDir = root.appendingPathComponent(SkipRules.reviewDirectoryName)
         try FileManager.default.createDirectory(at: reviewDir, withIntermediateDirectories: true)
     }
@@ -189,7 +189,7 @@ final class ReviewSessionTests: XCTestCase {
         let manifest = MoveManifest(root: root.path, createdAt: Date(), records: records)
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        let url = reviewDir.appendingPathComponent("_dupsweep_manifest_test.json")
+        let url = reviewDir.appendingPathComponent("_rollscrub_manifest_test.json")
         try encoder.encode(manifest).write(to: url)
         return url
     }

@@ -1,4 +1,4 @@
-import DupSweepCore
+import RollScrubCore
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -39,9 +39,9 @@ struct ContentView: View {
         .frame(minWidth: 1080, minHeight: 680)
         .task {
             // Lets the app be opened straight onto a manifest, from a script
-            // or from the dupsweep CLI.
+            // or from the rollscrub CLI.
             if !session.isLoaded,
-               let path = ProcessInfo.processInfo.environment["DUPSWEEP_MANIFEST"] {
+               let path = ProcessInfo.processInfo.environment["ROLLSCRUB_MANIFEST"] {
                 session.load(manifestURL: URL(fileURLWithPath: path))
             }
         }
@@ -207,7 +207,7 @@ struct ContentView: View {
                 .font(.system(size: 52))
                 .foregroundStyle(.tertiary)
             Text("Find duplicate photos and videos").font(.title2.weight(.semibold))
-            Text("Pick one or more folders or drives. DupSweep compares every\n"
+            Text("Pick one or more folders or drives. RollScrub compares every\n"
                  + "candidate byte for byte across all of them, then shows you\n"
                  + "each pair side by side. Nothing is moved or deleted until you say so.")
                 .multilineTextAlignment(.center)
@@ -354,7 +354,7 @@ struct ContentView: View {
         panel.canChooseFiles = true
         panel.allowedContentTypes = [.json]
         panel.allowsOtherFileTypes = true
-        panel.message = "Choose the drive you scanned, or a DupSweep manifest."
+        panel.message = "Choose the drive you scanned, or a RollScrub manifest."
         panel.prompt = "Open"
         guard panel.runModal() == .OK, let url = panel.url else { return }
 

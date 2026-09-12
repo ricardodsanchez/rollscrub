@@ -33,7 +33,7 @@ public enum ReportWriter {
         let stamp = DateFormatter()
         stamp.dateFormat = "yyyy-MM-dd HH:mm:ss"
 
-        out += "DupSweep report\n"
+        out += "RollScrub report\n"
         out += String(repeating: "=", count: 60) + "\n\n"
         out += "Roots scanned   : \(result.roots.map(\.path).joined(separator: ", "))\n"
         out += "Included        : "
