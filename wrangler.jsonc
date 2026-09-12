@@ -5,6 +5,13 @@
   // shipped copy of the app.
   "name": "rollscrub",
   "compatibility_date": "2026-09-12",
+
+  // rollscrub.com is the only way in. Left on, workers.dev and per-version
+  // preview URLs would publish the paid installer and the whole site at
+  // guessable hostnames, and serve identical content from several domains.
+  "workers_dev": false,
+  "preview_urls": false,
+
   "assets": {
     "directory": "./site"
   }
