@@ -1,0 +1,849 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="RollScrub finds duplicate photos and videos across every folder and drive you point it at, and compares every byte before calling two files the same. macOS 14+.">
+<link rel="canonical" href="https://rollscrub.app/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://rollscrub.app/">
+<meta property="og:title" content="RollScrub — proven duplicates, not guessed">
+<meta property="og:description" content="Find duplicate photos and videos across every folder and drive. Every match compared byte for byte. Nothing moves until you say so.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'><rect x='1' y='4' width='20' height='14' fill='none' stroke='%23E8833A' stroke-width='2'/><rect x='12' y='7' width='6' height='8' fill='%23E8833A'/></svg>">
+<style>
+  /* Standalone reset: the hosted-artifact wrapper supplied these. */
+  html { color-scheme: light dark; }
+  img, svg { max-width: 100%; }
+</style>
+<title>RollScrub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap">
+
+<style>
+  :root {
+    --ground: #F1F0EC;
+    --surface: #FFFFFF;
+    --frame: #DCD9D2;
+    --frame-strong: #B6B1A7;
+    --text: #1B1917;
+    --text-dim: #6A635B;
+    --text-faint: #928B82;
+    --accent: #C45A16;
+    --accent-soft: rgba(196, 90, 22, 0.10);
+    --verify: #3F7D5E;
+    --verify-soft: rgba(63, 125, 94, 0.10);
+    --strip: #201D1A;
+    --strip-text: #EDEAE4;
+    --strip-dim: #9A928A;
+
+    --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    --body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+    --measure: 62ch;
+    --edge: clamp(20px, 5vw, 64px);
+  }
+
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --ground: #131110;
+      --surface: #1C1917;
+      --frame: #302B27;
+      --frame-strong: #453E38;
+      --text: #EFEBE5;
+      --text-dim: #A79E95;
+      --text-faint: #7C736B;
+      --accent: #E8833A;
+      --accent-soft: rgba(232, 131, 58, 0.14);
+      --verify: #7FBE99;
+      --verify-soft: rgba(127, 190, 153, 0.13);
+      --strip: #0B0A09;
+      --strip-text: #EFEBE5;
+      --strip-dim: #7C736B;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #131110;
+    --surface: #1C1917;
+    --frame: #302B27;
+    --frame-strong: #453E38;
+    --text: #EFEBE5;
+    --text-dim: #A79E95;
+    --text-faint: #7C736B;
+    --accent: #E8833A;
+    --accent-soft: rgba(232, 131, 58, 0.14);
+    --verify: #7FBE99;
+    --verify-soft: rgba(127, 190, 153, 0.13);
+    --strip: #0B0A09;
+    --strip-text: #EFEBE5;
+    --strip-dim: #7C736B;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3 {
+    font-family: var(--display);
+    font-weight: 800;
+    letter-spacing: -0.028em;
+    text-wrap: balance;
+    margin: 0;
+    line-height: 1.05;
+  }
+
+  p { margin: 0; }
+  a { color: inherit; }
+
+  .wrap {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding-inline: var(--edge);
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+
+  /* ---------- nav ---------- */
+
+  .nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding-block: 22px;
+    border-bottom: 1px solid var(--frame);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 17px;
+    letter-spacing: -0.02em;
+  }
+
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: 26px;
+    font-size: 14px;
+    color: var(--text-dim);
+  }
+
+  .nav-links a { text-decoration: none; }
+  .nav-links a:hover { color: var(--text); }
+
+  @media (max-width: 620px) {
+    .nav-links .hide-sm { display: none; }
+  }
+
+  .btn {
+    display: inline-block;
+    font-family: var(--body);
+    font-weight: 500;
+    font-size: 15px;
+    text-decoration: none;
+    padding: 11px 20px;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: #FFF8F2;
+    transition: opacity 0.15s ease;
+  }
+  :root[data-theme="dark"] .btn { color: #17120D; }
+  :root:not([data-theme="light"]) { @media (prefers-color-scheme: dark) { .btn { color: #17120D; } } }
+
+  .btn:hover { opacity: 0.86; }
+  .btn.small { padding: 8px 15px; font-size: 14px; }
+
+  .btn.ghost {
+    background: transparent;
+    color: var(--text);
+    border-color: var(--frame-strong);
+  }
+
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+  }
+
+  /* ---------- hero ---------- */
+
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+    gap: clamp(32px, 5vw, 68px);
+    align-items: center;
+    padding-block: clamp(48px, 7vw, 88px);
+  }
+
+  @media (max-width: 900px) {
+    .hero { grid-template-columns: 1fr; }
+  }
+
+  .hero h1 {
+    font-size: clamp(42px, 6.2vw, 68px);
+    margin-block: 16px 20px;
+  }
+
+  .hero h1 em {
+    font-style: normal;
+    color: var(--accent);
+  }
+
+  .lede {
+    font-size: 18px;
+    color: var(--text-dim);
+    max-width: var(--measure);
+  }
+
+  .hero-cta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    margin-top: 28px;
+  }
+
+  .hero-meta {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-faint);
+    margin-top: 14px;
+  }
+
+  /* ---------- contact sheet ---------- */
+
+  .sheet {
+    background: var(--strip);
+    padding: 16px 14px 12px;
+    border: 1px solid var(--frame-strong);
+  }
+
+  .sheet-rail {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--strip-dim);
+    padding-bottom: 10px;
+  }
+
+  .frames {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+
+  .frame {
+    position: relative;
+    background: #17140F;
+    border: 1px solid #322C26;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    min-height: 132px;
+  }
+
+  /* Stand-in for the photograph: a flat tonal field, not a fake image. */
+  .plate {
+    flex: 1;
+    background:
+      linear-gradient(160deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.02) 55%),
+      var(--plate, #4A443C);
+  }
+
+  .frame-id {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    line-height: 1.35;
+    color: var(--strip-dim);
+    word-break: break-all;
+  }
+
+  .frame.marked { border-color: var(--accent); }
+
+  .tag {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    color: #17120D;
+    background: var(--accent);
+  }
+
+  .tag.keep { background: var(--verify); }
+
+  .sheet-note {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-top: 11px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--strip-dim);
+  }
+
+  .swatch {
+    width: 9px;
+    height: 9px;
+    background: var(--accent);
+    flex: none;
+  }
+  .swatch.keep { background: var(--verify); }
+
+  /* ---------- sections ---------- */
+
+  section { padding-block: clamp(52px, 7vw, 86px); border-top: 1px solid var(--frame); }
+
+  .section-head { max-width: var(--measure); margin-bottom: 40px; }
+  .section-head h2 { font-size: clamp(28px, 3.6vw, 40px); margin-block: 12px 16px; }
+  .section-head p { color: var(--text-dim); font-size: 17px; }
+
+  .claim {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--accent);
+  }
+
+  /* pipeline: genuinely ordered, so it is numbered */
+  .pipeline {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+    gap: 1px;
+    background: var(--frame);
+    border: 1px solid var(--frame);
+  }
+
+  .step {
+    background: var(--surface);
+    padding: 24px 22px 26px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .step-n {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+  }
+
+  .step h3 { font-size: 17px; letter-spacing: -0.015em; }
+  .step p { font-size: 14.5px; color: var(--text-dim); line-height: 1.55; }
+
+  .step-cost {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-faint);
+    margin-top: auto;
+    padding-top: 10px;
+  }
+
+  /* feature rows */
+  .rows { display: flex; flex-direction: column; gap: 1px; background: var(--frame); border-block: 1px solid var(--frame); }
+
+  .row {
+    background: var(--surface);
+    display: grid;
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    gap: clamp(20px, 4vw, 56px);
+    padding: clamp(26px, 3.4vw, 40px) clamp(22px, 3vw, 36px);
+    align-items: start;
+  }
+
+  @media (max-width: 780px) {
+    .row { grid-template-columns: 1fr; gap: 18px; }
+  }
+
+  .row h3 { font-size: 21px; margin-bottom: 10px; }
+  .row p { color: var(--text-dim); font-size: 15.5px; }
+  .row p + p { margin-top: 12px; }
+
+  .panel {
+    background: var(--ground);
+    border: 1px solid var(--frame);
+    padding: 16px 18px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.85;
+    color: var(--text-dim);
+    overflow-x: auto;
+  }
+
+  .panel .hl { color: var(--text); }
+  .panel .mark { color: var(--accent); }
+  .panel .ok { color: var(--verify); }
+  .panel .cmt { color: var(--text-faint); }
+
+  .kbd-list { display: flex; flex-direction: column; gap: 9px; }
+  .kbd-row { display: flex; align-items: baseline; gap: 12px; font-size: 14.5px; color: var(--text-dim); }
+
+  kbd {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    min-width: 26px;
+    text-align: center;
+    padding: 3px 7px;
+    color: var(--text);
+    background: var(--ground);
+    border: 1px solid var(--frame-strong);
+    flex: none;
+  }
+
+  .guards { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1px; background: var(--frame); border: 1px solid var(--frame); }
+  .guard { background: var(--surface); padding: 22px; }
+  .guard h3 { font-size: 15.5px; margin-bottom: 7px; }
+  .guard p { font-size: 14px; color: var(--text-dim); line-height: 1.55; }
+  .guard .mono-flag { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--verify); display: block; margin-bottom: 10px; }
+
+  .formats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 18px;
+  }
+
+  .fmt {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    padding: 4px 9px;
+    border: 1px solid var(--frame-strong);
+    color: var(--text-dim);
+  }
+
+  /* pricing */
+  .price-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 1px; background: var(--frame); border: 1px solid var(--frame); }
+  .price { background: var(--surface); padding: 30px 26px; display: flex; flex-direction: column; gap: 14px; }
+  .price.lead { background: var(--accent-soft); }
+  .price h3 { font-size: 19px; }
+  .amount { font-family: var(--display); font-weight: 800; font-size: 42px; letter-spacing: -0.03em; line-height: 1; }
+  .amount span { font-family: var(--mono); font-size: 12px; font-weight: 400; letter-spacing: 0; color: var(--text-faint); margin-left: 8px; }
+  .price ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14.5px; color: var(--text-dim); }
+  .price li { display: flex; gap: 9px; align-items: baseline; }
+  .price li::before { content: "—"; color: var(--accent); font-family: var(--mono); font-size: 11px; flex: none; }
+  .price .btn { text-align: center; margin-top: auto; }
+
+  .todo {
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--accent);
+    border: 1px dashed var(--accent);
+    padding: 9px 12px;
+    margin-top: 18px;
+  }
+
+  /* faq */
+  .faq { display: flex; flex-direction: column; gap: 1px; background: var(--frame); border-block: 1px solid var(--frame); }
+  details { background: var(--surface); padding: 18px clamp(20px, 3vw, 30px); }
+  summary { cursor: pointer; font-weight: 500; font-size: 16px; list-style: none; display: flex; justify-content: space-between; gap: 16px; align-items: center; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; font-family: var(--mono); color: var(--accent); font-size: 17px; flex: none; }
+  details[open] summary::after { content: "–"; }
+  details p { margin-top: 11px; color: var(--text-dim); font-size: 15px; max-width: var(--measure); }
+  details p + p { margin-top: 10px; }
+
+  footer { border-top: 1px solid var(--frame); padding-block: 34px 44px; }
+  .foot {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px 32px;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13.5px;
+    color: var(--text-faint);
+  }
+  .foot a { color: var(--text-dim); text-decoration: none; }
+  .foot a:hover { color: var(--text); }
+  .foot-links { display: flex; flex-wrap: wrap; gap: 20px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <nav class="nav">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+        <rect x="0.75" y="3.75" width="20.5" height="14.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <rect x="4" y="7" width="6" height="8" fill="currentColor" opacity="0.35"/>
+        <rect x="12" y="7" width="6" height="8" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+      </svg>
+      RollScrub
+    </div>
+    <div class="nav-links">
+      <a href="#how" class="hide-sm">How it works</a>
+      <a href="#safety" class="hide-sm">Safety</a>
+      <a href="#pricing">Pricing</a>
+      <a class="btn small" href="#pricing">Download</a>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div>
+      <div class="eyebrow">Duplicate photos &amp; video · macOS</div>
+      <h1>Proven duplicates. <em>Not guessed.</em></h1>
+      <p class="lede">
+        RollScrub finds duplicate photos and videos across every folder and drive you
+        point it at — and compares every single byte before it calls two files the same.
+        You see each pair side by side. Nothing moves until you say so.
+      </p>
+      <div class="hero-cta">
+        <a class="btn" href="#pricing">Download for macOS</a>
+        <a class="btn ghost" href="#how">See how it works</a>
+      </div>
+      <p class="hero-meta">macOS 14 or later · Apple silicon &amp; Intel · Free to scan</p>
+    </div>
+
+    <div class="sheet" role="img"
+         aria-label="A contact sheet of four frames. Two frames share identical bytes and are marked: one to keep, one to remove.">
+      <div class="sheet-rail">
+        <span>Contact sheet — 2024-05-14</span>
+        <span>4 frames · 2 identical</span>
+      </div>
+      <div class="frames">
+        <div class="frame">
+          <div class="plate" style="--plate:#54606B"></div>
+          <div class="frame-id">20240514-Q2-1001502.dng<br>41.2 MB</div>
+        </div>
+        <div class="frame marked">
+          <span class="tag keep">Keep</span>
+          <div class="plate" style="--plate:#6B5B45"></div>
+          <div class="frame-id">20240514-Q2-1001515.jpeg<br>15.5 MB</div>
+        </div>
+        <div class="frame marked">
+          <span class="tag">Remove</span>
+          <div class="plate" style="--plate:#6B5B45"></div>
+          <div class="frame-id">IMG_1515 copy.jpeg<br>15.5 MB</div>
+        </div>
+        <div class="frame">
+          <div class="plate" style="--plate:#3F4A42"></div>
+          <div class="frame-id">20240514-Q2-1001descr.mov<br>288 MB</div>
+        </div>
+      </div>
+      <div class="sheet-note">
+        <span class="swatch keep"></span>
+        <span>Identical across all 16,294,959 bytes — the renamed original stays.</span>
+      </div>
+    </div>
+  </header>
+</div>
+
+<section id="how">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">How a match is proven</div>
+      <h2>Four passes. The last one reads every byte.</h2>
+      <p>
+        Most duplicate finders score how <em>similar</em> two photos look, then ask you to
+        trust the score. RollScrub never does that. Files are narrowed down cheaply, then
+        the survivors are compared in full — so a pair is either identical or it is not shown.
+      </p>
+    </div>
+
+    <div class="pipeline">
+      <div class="step">
+        <div class="step-n">Pass 1</div>
+        <h3>Group by exact size</h3>
+        <p>Files that differ by a single byte in length cannot be duplicates. Anything with a size all to itself is discarded immediately.</p>
+        <div class="step-cost">Reads no file contents</div>
+      </div>
+      <div class="step">
+        <div class="step-n">Pass 2</div>
+        <h3>Signature the ends</h3>
+        <p>Each remaining file gets a signature read from its head and tail — enough to separate unrelated files that happen to share a size.</p>
+        <div class="step-cost">Reads ~256 KB per file</div>
+      </div>
+      <div class="step">
+        <div class="step-n">Pass 3</div>
+        <h3>Compare in full</h3>
+        <p>Every still-matching cluster is compared byte for byte. Files that only <em>looked</em> alike are split apart here and never reach you as a pair.</p>
+        <div class="step-cost">Reads both files end to end</div>
+      </div>
+      <div class="step">
+        <div class="step-n">Pass 4</div>
+        <h3>Pick the keeper</h3>
+        <p>Your renamed original wins over the camera's untouched filename, and anything that looks like a copy loses. You can always override it.</p>
+        <div class="step-cost">Suggests, never decides</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Scanning</div>
+      <h2>Your library isn't in one place. Neither is the scan.</h2>
+      <p>
+        The same shot ends up in a Lightroom library, an export folder, an old backup, and
+        an external drive. Point RollScrub at all of them at once and it finds the copies
+        <em>between</em> them — not just within each one.
+      </p>
+    </div>
+
+    <div class="rows">
+      <div class="row">
+        <div>
+          <h3>Scan many folders and drives together</h3>
+          <p>
+            Pick as many folders or volumes as you like in one pass. A photo in your
+            Pictures folder and the identical file on an external drive come back as one
+            pair, with the full path of each so you can tell at a glance which copy is which.
+          </p>
+        </div>
+        <div class="panel">
+          <div class="cmt"># one sweep across everything</div>
+          <div><span class="hl">rollscrub</span> ~/Pictures "/Volumes/Extreme Pro" ~/Library/Mobile\ Documents</div>
+          <div>&nbsp;</div>
+          <div>Media files scanned : 48,207</div>
+          <div>Duplicate groups    : 1,904</div>
+          <div>Redundant files     : 2,236</div>
+          <div><span class="ok">Reclaimable         : 214.8 GB</span></div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <h3>Decide with both files in front of you</h3>
+          <p>
+            Every pair opens side by side at full size, with dimensions, capture date and
+            file size for each. Two clips play together, frame for frame, so you can confirm
+            a video match with your own eyes rather than a checkmark.
+          </p>
+          <p>
+            Keyboard-first, because a real library means thousands of these decisions.
+          </p>
+        </div>
+        <div class="kbd-list">
+          <div class="kbd-row"><kbd>D</kbd><span>Mark the duplicate for removal</span></div>
+          <div class="kbd-row"><kbd>K</kbd><span>Keep both, leave them where they are</span></div>
+          <div class="kbd-row"><kbd>U</kbd><span>Clear the mark on this pair</span></div>
+          <div class="kbd-row"><kbd>↑</kbd><span>Previous pair</span></div>
+          <div class="kbd-row"><kbd>↓</kbd><span>Next pair</span></div>
+          <div class="kbd-row" style="margin-top:6px;color:var(--text-faint);font-size:13.5px">
+            <span>Marks are saved per scan — close the window mid-review and come back to it.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <h3>Raw, video, and the formats in between</h3>
+          <p>
+            Previews come from the embedded image inside a raw file rather than a generic
+            document icon, so two ARW or DNG frames are actually distinguishable. Video
+            thumbnails are pulled a second into the clip, past the fade-in.
+          </p>
+          <div class="formats">
+            <span class="fmt">DNG</span><span class="fmt">ARW</span><span class="fmt">CR2</span>
+            <span class="fmt">CR3</span><span class="fmt">NEF</span><span class="fmt">RAF</span>
+            <span class="fmt">ORF</span><span class="fmt">RW2</span><span class="fmt">JPEG</span>
+            <span class="fmt">HEIC</span><span class="fmt">PNG</span><span class="fmt">TIFF</span>
+            <span class="fmt">MOV</span><span class="fmt">MP4</span><span class="fmt">M4V</span>
+            <span class="fmt">MTS</span><span class="fmt">M2TS</span><span class="fmt">INSV</span>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="cmt"># what a confirmed group looks like</div>
+          <div>[1] photo  15.5 MB  x2 copies</div>
+          <div>&nbsp;&nbsp;<span class="ok">KEEP  </span> …/2024-05-14/20240514-Q2-1001515.jpeg</div>
+          <div>&nbsp;&nbsp;<span class="mark">REMOVE</span> …/Instagram/IMG_1515 copy.jpeg</div>
+          <div>&nbsp;</div>
+          <div class="cmt"># rejected — looked identical, differed on full compare</div>
+          <div>Rejected by verify  : 7</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="safety">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Safety</div>
+      <h2>The tool is only useful if you can trust it with originals.</h2>
+      <p class="claim">Scanning is read-only. Removal goes to the Trash. Every step is reversible.</p>
+    </div>
+
+    <div class="guards">
+      <div class="guard">
+        <span class="mono-flag">Re-checked</span>
+        <h3>Verified again at the last moment</h3>
+        <p>A file is compared against the copy being kept one more time immediately before it moves — not just at scan time. If they no longer match, it stays put.</p>
+      </div>
+      <div class="guard">
+        <span class="mono-flag">Never deleted</span>
+        <h3>Trash, not erase</h3>
+        <p>Removals go to the Trash and stay recoverable in the Finder until you empty it yourself. RollScrub never unlinks a file outright.</p>
+      </div>
+      <div class="guard">
+        <span class="mono-flag">Guarded</span>
+        <h3>The keeper must exist</h3>
+        <p>If the copy that justifies a removal has gone missing, the duplicate is left exactly where it is and reported — never removed on the strength of a stale scan.</p>
+      </div>
+      <div class="guard">
+        <span class="mono-flag">Left alone</span>
+        <h3>iCloud files aren't pulled down</h3>
+        <p>Photos that live in iCloud but aren't downloaded are skipped rather than quietly fetched — or removed from your other devices behind your back.</p>
+      </div>
+      <div class="guard">
+        <span class="mono-flag">Never entered</span>
+        <h3>Final Cut libraries stay sealed</h3>
+        <p>Files inside an <span style="font-family:var(--mono);font-size:12.5px">.fcpbundle</span> are legitimately identical to originals elsewhere. Descending into one and "deduplicating" it corrupts the library, so RollScrub doesn't look inside.</p>
+      </div>
+      <div class="guard">
+        <span class="mono-flag">Reversible</span>
+        <h3>Undo, from a manifest</h3>
+        <p>The command-line tool writes a manifest of everything it set aside, and puts every file back where it came from with a single <span style="font-family:var(--mono);font-size:12.5px">--undo</span>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">For large sweeps</div>
+      <h2>There's a command-line tool in the box.</h2>
+      <p>
+        For drives with hundreds of thousands of files, or a sweep you want to run on a
+        schedule. It writes a text report and a CSV, and with <span style="font-family:var(--mono);font-size:15px">--move</span>
+        it sets duplicates aside in a review folder <em>inside whichever drive each was found on</em>
+        — so nothing has to cross a volume boundary, and nothing is deleted.
+      </p>
+    </div>
+    <div class="panel">
+      <div class="cmt"># read-only by default: writes a report, touches nothing</div>
+      <div><span class="hl">rollscrub</span> "/Volumes/Extreme Pro" --out ~/Desktop/sweep.txt</div>
+      <div>&nbsp;</div>
+      <div class="cmt"># set duplicates aside, reversibly</div>
+      <div><span class="hl">rollscrub</span> ~/Pictures "/Volumes/Extreme Pro" <span class="mark">--move</span></div>
+      <div>&nbsp;</div>
+      <div class="cmt"># changed your mind</div>
+      <div><span class="hl">rollscrub</span> <span class="ok">--undo</span> "/Volumes/Extreme Pro/_duplicates_review/_rollscrub_manifest_20260912-014500.json"</div>
+    </div>
+  </div>
+</section>
+
+<section id="pricing">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Pricing</div>
+      <h2>Scan for free. Pay once to act on it.</h2>
+      <p>Scanning, reviewing and the full report cost nothing and always will — you can see exactly what RollScrub found before deciding whether it's worth anything to you.</p>
+    </div>
+
+    <div class="price-grid">
+      <div class="price">
+        <h3>Free</h3>
+        <div class="amount">$0</div>
+        <ul>
+          <li>Scan unlimited folders and drives</li>
+          <li>Byte-for-byte verification</li>
+          <li>Side-by-side review of every pair</li>
+          <li>Text and CSV reports</li>
+        </ul>
+        <a class="btn ghost" href="#">Download</a>
+      </div>
+
+      <div class="price lead">
+        <h3>RollScrub Pro</h3>
+        <div class="amount">$29<span>one time</span></div>
+        <ul>
+          <li>Everything in Free</li>
+          <li>Move duplicates to the Trash in bulk</li>
+          <li>Command-line tool with <span style="font-family:var(--mono);font-size:13px">--move</span> and <span style="font-family:var(--mono);font-size:13px">--undo</span></li>
+          <li>Use on all the Macs you own</li>
+          <li>Free updates</li>
+        </ul>
+        <a class="btn" href="#">Buy RollScrub Pro</a>
+      </div>
+    </div>
+
+    <div class="todo">
+      Draft — set before launch: price and tier split, the actual purchase/licensing link,
+      and the download URL. Nothing here is wired to a payment processor yet.
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Questions</div>
+      <h2>Before you point it at 40,000 photos.</h2>
+    </div>
+
+    <div class="faq">
+      <details open>
+        <summary>Will it catch two edits of the same photo?</summary>
+        <p>No — and that's deliberate. A re-exported or re-compressed version is a different file, byte for byte, so RollScrub won't claim it's a duplicate. It finds exact copies: the same file that got duplicated into a second folder, a backup, or a drive.</p>
+        <p>If you want a tool that guesses at visual similarity, there are several. This one is built on the opposite promise.</p>
+      </details>
+      <details>
+        <summary>Does it touch my Photos or Lightroom library?</summary>
+        <p>It reads whatever folders you choose, including the originals inside a Lightroom library if you point it there. It never writes to a catalog or database — removals go to the Trash, and you should re-sync your catalog afterwards the way you would after any change made outside the app.</p>
+        <p>Final Cut Pro libraries are skipped entirely: their internal media is meant to be duplicated, and pruning it corrupts the library.</p>
+      </details>
+      <details>
+        <summary>What if it's wrong?</summary>
+        <p>Nothing is deleted. Files go to the Trash, where you can put them back from the Finder. The command-line tool goes further — it moves files into a review folder and writes a manifest, so a single <span style="font-family:var(--mono);font-size:14px">--undo</span> puts every one of them back exactly where it was.</p>
+      </details>
+      <details>
+        <summary>How long does a scan take?</summary>
+        <p>Most of the work is thrown away cheaply: only files sharing an exact byte size are ever opened, which on a real drive eliminates the overwhelming majority before anything is read. Full byte-for-byte comparison then runs in parallel across cores, and only on the handful of genuine candidates.</p>
+      </details>
+      <details>
+        <summary>Is it on the Mac App Store?</summary>
+        <p>No. RollScrub is distributed directly and notarized by Apple, which is what lets it scan any drive you choose without the sandbox restrictions a Mac App Store build would impose on reaching your external volumes.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <div>© 2026 Ricardo Sanchez · Made in Seattle</div>
+    <div class="foot-links">
+      <a href="#how">How it works</a>
+      <a href="#safety">Safety</a>
+      <a href="#pricing">Pricing</a>
+      <a href="mailto:support@rollscrub.app">Support</a>
+    </div>
+  </div>
+</footer>
+</body>
+</html>
