@@ -13,7 +13,14 @@ cd "$(dirname "$0")"
 
 VERSION="${VERSION:?set VERSION, e.g. VERSION=1.1 BUILD=2 ./release.sh}"
 BUILD="${BUILD:?set BUILD to a number higher than the last release}"
-RELEASES="releases"
+
+# Cloudflare Pages serves site/ as the domain root, so site/releases/ is
+# /releases/. The appcast is written to the root instead, because the feed URL
+# baked into every shipped copy is https://rollscrub.app/appcast.xml and older
+# installs will keep asking for exactly that path forever.
+SITE="site"
+RELEASES="$SITE/releases"
+APPCAST="$SITE/appcast.xml"
 DOWNLOAD_PREFIX="${DOWNLOAD_PREFIX:-https://rollscrub.app/releases/}"
 
 die() { echo "error: $*" >&2; exit 1; }
@@ -44,12 +51,15 @@ ditto -c -k --keepParent "$APP" "$ARCHIVE"
 # versions keep their entries and users on any prior build still see a path
 # forward.
 echo "==> regenerating appcast"
-"$APPCAST_TOOL" --download-url-prefix "$DOWNLOAD_PREFIX" "$RELEASES"
+"$APPCAST_TOOL" --download-url-prefix "$DOWNLOAD_PREFIX" -o "$APPCAST" "$RELEASES"
 
 echo
-echo "Release $VERSION ($BUILD) ready in $RELEASES/"
-ls -lh "$RELEASES"
+echo "Release $VERSION ($BUILD) ready:"
+ls -lh "$RELEASES" "$APPCAST"
 echo
-echo "Next: upload $RELEASES/ to rollscrub.app so these resolve —"
+echo "Commit and push — Cloudflare Pages deploys site/ and these go live:"
 echo "  ${DOWNLOAD_PREFIX}RollScrub-$VERSION.zip"
-echo "  https://rollscrub.app/appcast.xml   (from $RELEASES/appcast.xml)"
+echo "  https://rollscrub.app/appcast.xml"
+echo
+echo "Then confirm the feed is actually reachable, because a broken one fails silently:"
+echo "  curl -sI https://rollscrub.app/appcast.xml | head -1"

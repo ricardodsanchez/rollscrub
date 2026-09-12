@@ -5,6 +5,9 @@ dupsweep_report.txt
 dupsweep_report.csv
 rollscrub_report.txt
 rollscrub_report.csv
-releases/
+# Anchored to the repo root so it cannot swallow site/releases/, which must
+# stay tracked: Cloudflare Pages serves what is committed, so an ignored zip is
+# a download link that 404s.
+/releases/
 private_keys/
 *.p8
