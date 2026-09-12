@@ -6,10 +6,11 @@
 # person to open it on a flaky connection gets "cannot be opened".
 #
 # One-time setup — store an app-specific password (appleid.apple.com →
-# Sign-In and Security → App-Specific Passwords), NOT your Apple ID password:
+# Sign-In and Security → App-Specific Passwords), NOT your Apple ID password.
+# Use the Apple ID that owns the Developer Program membership:
 #
 #   xcrun notarytool store-credentials "rollscrub-notary" \
-#     --apple-id "ricardodsanchez@gmail.com" \
+#     --apple-id "<your-developer-apple-id>" \
 #     --team-id "R398R96429"
 #
 # Then: ./make-app.sh && ./notarize.sh

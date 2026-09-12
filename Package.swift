@@ -9,12 +9,18 @@ let package = Package(
         .executable(name: "RollScrubApp", targets: ["RollScrubApp"]),
         .library(name: "RollScrubCore", targets: ["RollScrubCore"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
+    ],
     targets: [
         .target(name: "RollScrubCore"),
         .executableTarget(name: "rollscrub", dependencies: ["RollScrubCore"]),
         .executableTarget(
             name: "RollScrubApp",
-            dependencies: ["RollScrubCore"],
+            dependencies: [
+                "RollScrubCore",
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
             // SwiftPM does not autolink these, and SwiftUI's VideoPlayer aborts
             // at runtime if AVKit's AVPlayerView class cannot be resolved.
             linkerSettings: [

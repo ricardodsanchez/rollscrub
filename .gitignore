@@ -5,3 +5,6 @@ dupsweep_report.txt
 dupsweep_report.csv
 rollscrub_report.txt
 rollscrub_report.csv
+releases/
+private_keys/
+*.p8

@@ -4,6 +4,7 @@ import SwiftUI
 struct RollScrubApp: App {
     // Owned here so the menu bar can drive the same session the window shows.
     @StateObject private var session = ReviewSession()
+    @StateObject private var updater = Updater()
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
@@ -16,6 +17,8 @@ struct RollScrubApp: App {
 
             CommandGroup(replacing: .appInfo) {
                 Button("About RollScrub") { openWindow(id: "about") }
+                Button("Check for Updates…") { updater.checkForUpdates() }
+                    .disabled(!updater.canCheckForUpdates)
             }
 
             // Replaces the default Help item, which otherwise looks for a help
