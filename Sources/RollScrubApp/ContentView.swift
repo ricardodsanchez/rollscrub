@@ -269,13 +269,35 @@ struct ContentView: View {
             }
             .disabled(scanner.isScanning)
         }
+        // Symbols rather than text, the way Finder, Mail and Preview do it:
+        // a text-only toolbar button renders as a wide capsule, and three of
+        // them crowd the title bar. Each carries a help tag, because an icon
+        // alone does not say what it does — and every one of these is also in
+        // the Review menu, which is where the labels live.
         ToolbarItemGroup {
-            Button("Mark all for removal") { session.markAllPending(as: .discard) }
-                .disabled(session.items.isEmpty)
-            Button("Clear marks") { session.markAllPending(as: .undecided) }
-                .disabled(session.items.isEmpty)
-            Button("Retry failed") { session.retryFailed() }
-                .disabled(session.failedCount == 0)
+            Button {
+                session.markAllPending(as: .discard)
+            } label: {
+                Label("Mark All for Removal", systemImage: "trash")
+            }
+            .help("Mark every remaining duplicate for removal")
+            .disabled(session.items.isEmpty)
+
+            Button {
+                session.markAllPending(as: .undecided)
+            } label: {
+                Label("Clear Marks", systemImage: "arrow.uturn.backward")
+            }
+            .help("Clear every mark and start the review over")
+            .disabled(session.items.isEmpty)
+
+            Button {
+                session.retryFailed()
+            } label: {
+                Label("Retry Failed", systemImage: "exclamationmark.arrow.circlepath")
+            }
+            .help("Put files that could not be removed back in the queue")
+            .disabled(session.failedCount == 0)
         }
     }
 
