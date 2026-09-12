@@ -1,0 +1,7 @@
+.build/
+.DS_Store
+*.xcuserstate
+dupsweep_report.txt
+dupsweep_report.csv
+rollscrub_report.txt
+rollscrub_report.csv
