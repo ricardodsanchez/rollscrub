@@ -4,8 +4,8 @@
 #
 #   VERSION=1.1 BUILD=2 ./release.sh
 #
-# Upload the whole releases/ directory to rollscrub.app afterwards, so that
-# https://rollscrub.app/appcast.xml and the zip beside it both resolve — the
+# Upload the whole releases/ directory to rollscrub.com afterwards, so that
+# https://rollscrub.com/appcast.xml and the zip beside it both resolve — the
 # appcast points at those URLs and an update fails without them.
 set -euo pipefail
 
@@ -16,12 +16,12 @@ BUILD="${BUILD:?set BUILD to a number higher than the last release}"
 
 # Cloudflare Pages serves site/ as the domain root, so site/releases/ is
 # /releases/. The appcast is written to the root instead, because the feed URL
-# baked into every shipped copy is https://rollscrub.app/appcast.xml and older
+# baked into every shipped copy is https://rollscrub.com/appcast.xml and older
 # installs will keep asking for exactly that path forever.
 SITE="site"
 RELEASES="$SITE/releases"
 APPCAST="$SITE/appcast.xml"
-DOWNLOAD_PREFIX="${DOWNLOAD_PREFIX:-https://rollscrub.app/releases/}"
+DOWNLOAD_PREFIX="${DOWNLOAD_PREFIX:-https://rollscrub.com/releases/}"
 
 die() { echo "error: $*" >&2; exit 1; }
 
@@ -59,7 +59,7 @@ ls -lh "$RELEASES" "$APPCAST"
 echo
 echo "Commit and push — Cloudflare Pages deploys site/ and these go live:"
 echo "  ${DOWNLOAD_PREFIX}RollScrub-$VERSION.zip"
-echo "  https://rollscrub.app/appcast.xml"
+echo "  https://rollscrub.com/appcast.xml"
 echo
 echo "Then confirm the feed is actually reachable, because a broken one fails silently:"
-echo "  curl -sI https://rollscrub.app/appcast.xml | head -1"
+echo "  curl -sI https://rollscrub.com/appcast.xml | head -1"

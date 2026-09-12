@@ -57,7 +57,7 @@ cat > "$STAGE/Contents/Info.plist" <<PLIST
 <dict>
   <key>CFBundleName</key>              <string>RollScrub</string>
   <key>CFBundleDisplayName</key>       <string>RollScrub</string>
-  <key>CFBundleIdentifier</key>        <string>app.rollscrub.RollScrub</string>
+  <key>CFBundleIdentifier</key>        <string>com.rollscrub.RollScrub</string>
   <key>CFBundleExecutable</key>        <string>RollScrub</string>
   <key>CFBundlePackageType</key>       <string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
@@ -76,7 +76,7 @@ cat > "$STAGE/Contents/Info.plist" <<PLIST
   <string>RollScrub needs access to look for duplicate photos and videos in this folder.</string>
   <key>NSPhotoLibraryUsageDescription</key>
   <string>RollScrub needs access to look for duplicate photos and videos in your Photos library.</string>
-  <key>SUFeedURL</key>                  <string>https://rollscrub.app/appcast.xml</string>
+  <key>SUFeedURL</key>                  <string>https://rollscrub.com/appcast.xml</string>
   <key>SUPublicEDKey</key>              <string>dlmHLAiiatePqkcQyLJwukdlNBTx7ZzPkJxSALTMkVk=</string>
 </dict>
 </plist>
@@ -118,7 +118,7 @@ sign "$SPARKLE/XPCServices/Installer.xpc"
 sign "$SPARKLE/Updater.app"
 sign "$SPARKLE/Autoupdate"
 sign "$STAGE/Contents/Frameworks/Sparkle.framework"
-sign "$STAGE" --identifier app.rollscrub.RollScrub
+sign "$STAGE" --identifier com.rollscrub.RollScrub
 
 if [ -n "$SIGN_IDENTITY" ]; then
   echo "signed: $SIGN_IDENTITY"

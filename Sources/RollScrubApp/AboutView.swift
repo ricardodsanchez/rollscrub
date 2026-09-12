@@ -4,8 +4,8 @@ import SwiftUI
 /// app, and are absent under `swift run` — where there is no Info.plist.
 enum AppInfo {
     static let name = "RollScrub"
-    static let website = URL(string: "https://rollscrub.app")!
-    static let supportEmail = "support@rollscrub.app"
+    static let website = URL(string: "https://rollscrub.com")!
+    static let supportEmail = "support@rollscrub.com"
 
     static var version: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
