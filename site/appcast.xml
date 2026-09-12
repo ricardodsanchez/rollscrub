@@ -3,6 +3,17 @@
     <channel>
         <title>RollScrub</title>
         <item>
+            <title>1.1</title>
+            <pubDate>Sat, 12 Sep 2026 13:30:56 -0700</pubDate>
+            <sparkle:version>2</sparkle:version>
+            <sparkle:shortVersionString>1.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://rollscrub.com/releases/RollScrub-1.1.zip" length="1902983" type="application/octet-stream" sparkle:edSignature="Tc3ts/ISavJb1Wr+s6XirWtC3YPIHZixRw9WpAsGeAeJ4aGTW4/8+rFFsM+dwPoAjnBucLYwH1AMFPWndo1nCA=="/>
+            <sparkle:deltas>
+                <enclosure url="https://rollscrub.com/releases/RollScrub2-1.delta" sparkle:deltaFrom="1" length="11690" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="fcjxEjzmSXMFNExuCkzWP5NxjkHrp7mo5onscBc4JlCOOyRPth9CNGOq4mecRTWhkCeLP28IbW9AoaKfcprZCw=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>1.0</title>
             <pubDate>Sat, 12 Sep 2026 12:47:32 -0700</pubDate>
             <sparkle:version>1</sparkle:version>
