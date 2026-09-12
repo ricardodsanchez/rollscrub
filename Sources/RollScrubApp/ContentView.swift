@@ -203,9 +203,10 @@ struct ContentView: View {
 
     private var welcome: some View {
         VStack(spacing: 18) {
-            Image(systemName: "square.on.square.dashed")
-                .font(.system(size: 52))
-                .foregroundStyle(.tertiary)
+            Image(nsImage: NSApplication.shared.applicationIconImage)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 84, height: 84)
             Text("Find duplicate photos and videos").font(.title2.weight(.semibold))
             Text("Pick one or more folders or drives. RollScrub compares every\n"
                  + "candidate byte for byte across all of them, then shows you\n"

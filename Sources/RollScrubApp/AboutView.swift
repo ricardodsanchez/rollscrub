@@ -24,9 +24,13 @@ enum AppInfo {
 struct AboutView: View {
     var body: some View {
         VStack(spacing: 14) {
-            Image(systemName: "square.on.square.dashed")
-                .font(.system(size: 56))
-                .foregroundStyle(.tint)
+            // The real icon from the bundle, not a stand-in symbol: an About
+            // box showing something other than the app's own icon reads as a
+            // different application.
+            Image(nsImage: NSApplication.shared.applicationIconImage)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 96, height: 96)
 
             VStack(spacing: 4) {
                 Text(AppInfo.name).font(.title.weight(.semibold))
