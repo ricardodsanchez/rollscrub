@@ -29,11 +29,15 @@ die() { echo "error: $*" >&2; exit 1; }
 SIGINFO="$(codesign -dvv "$APP" 2>&1)" || die "$APP is not signed at all."
 AUTHORITY="$(printf '%s\n' "$SIGINFO" | awk -F= '/^Authority=/ { print $2; exit }')"
 
-if printf '%s\n' "$SIGINFO" | grep -q "Signature=adhoc"; then
-  die "$APP is ad-hoc signed, which Apple will not notarize.
+# Matched with case rather than `grep -q`: under `set -o pipefail`, grep -q
+# exits at the first match and SIGPIPEs the writer, so the pipeline reports
+# failure precisely when the pattern was found.
+case "$SIGINFO" in
+  *"Signature=adhoc"*)
+    die "$APP is ad-hoc signed, which Apple will not notarize.
        Install a Developer ID Application certificate, then re-run ./make-app.sh.
-       Check what you have: security find-identity -v -p codesigning"
-fi
+       Check what you have: security find-identity -v -p codesigning" ;;
+esac
 
 case "$AUTHORITY" in
   "Developer ID Application"*) ;;
@@ -42,8 +46,10 @@ case "$AUTHORITY" in
        Notarization needs Developer ID. Check: security find-identity -v -p codesigning" ;;
 esac
 
-codesign -dvv "$APP" 2>&1 | grep -q "flags=.*runtime" \
-  || die "$APP is not signed with the hardened runtime (--options runtime). Rebuild with ./make-app.sh."
+case "$SIGINFO" in
+  *"flags="*"(runtime)"*) ;;
+  *) die "$APP is not signed with the hardened runtime (--options runtime). Rebuild with ./make-app.sh." ;;
+esac
 
 xcrun notarytool history --keychain-profile "$PROFILE" >/dev/null 2>&1 \
   || die "no stored credentials named '$PROFILE'. See the setup comment at the top of this script."
