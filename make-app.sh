@@ -10,7 +10,14 @@ set -euo pipefail
 cd "$(dirname "$0")"
 DEST="${1:-/Applications}"
 APP_NAME="RollScrub.app"
-STAGE=".build/stage/$APP_NAME"
+
+# Staged outside the project: this tree can live in iCloud Drive, and a
+# file-provider directory stamps com.apple.FinderInfo and provenance
+# attributes onto everything — which codesign refuses outright, and which
+# xattr -c cannot always clear. A temp directory is never synced.
+STAGE_ROOT="$(mktemp -d)"
+STAGE="$STAGE_ROOT/$APP_NAME"
+trap 'rm -rf "$STAGE_ROOT"' EXIT
 
 # Keep build artifacts out of Spotlight so only the installed app is findable.
 mkdir -p .build
@@ -19,7 +26,6 @@ touch .build/.metadata_never_index
 swift build -c release --product RollScrubApp
 BIN="$(swift build -c release --product RollScrubApp --show-bin-path)/RollScrubApp"
 
-rm -rf "$STAGE"
 mkdir -p "$STAGE/Contents/MacOS" "$STAGE/Contents/Resources"
 cp "$BIN" "$STAGE/Contents/MacOS/RollScrub"
 
@@ -37,9 +43,19 @@ cat > "$STAGE/Contents/Info.plist" <<'PLIST'
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>CFBundleVersion</key>           <string>1</string>
   <key>LSMinimumSystemVersion</key>    <string>14.0</string>
+  <key>LSApplicationCategoryType</key> <string>public.app-category.utilities</string>
   <key>NSHighResolutionCapable</key>   <true/>
+  <key>NSHumanReadableCopyright</key>  <string>© 2026 Ricardo Sanchez</string>
   <key>NSRemovableVolumesUsageDescription</key>
   <string>RollScrub needs access to your external drive to show and clean up duplicate photos and videos.</string>
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>RollScrub needs access to look for duplicate photos and videos in this folder.</string>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>RollScrub needs access to look for duplicate photos and videos in this folder.</string>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>RollScrub needs access to look for duplicate photos and videos in this folder.</string>
+  <key>NSPhotoLibraryUsageDescription</key>
+  <string>RollScrub needs access to look for duplicate photos and videos in your Photos library.</string>
 </dict>
 </plist>
 PLIST
@@ -60,6 +76,5 @@ fi
 
 rm -rf "${DEST:?}/$APP_NAME"
 cp -R "$STAGE" "$DEST/$APP_NAME"
-rm -rf "$STAGE"
 
 echo "Installed $DEST/$APP_NAME"

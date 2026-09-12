@@ -4,6 +4,7 @@ import SwiftUI
 struct RollScrubApp: App {
     // Owned here so the menu bar can drive the same session the window shows.
     @StateObject private var session = ReviewSession()
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
         Window("RollScrub Review", id: "review") {
@@ -12,6 +13,17 @@ struct RollScrubApp: App {
         .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(replacing: .newItem) {}
+
+            CommandGroup(replacing: .appInfo) {
+                Button("About RollScrub") { openWindow(id: "about") }
+            }
+
+            // Replaces the default Help item, which otherwise looks for a help
+            // book this app does not ship and opens an empty viewer.
+            CommandGroup(replacing: .help) {
+                Button("RollScrub Help") { openWindow(id: "help") }
+                    .keyboardShortcut("?", modifiers: .command)
+            }
 
             // Real menu commands rather than hidden zero-size buttons: these
             // are discoverable, and their shortcuts work wherever focus is.
@@ -38,5 +50,19 @@ struct RollScrubApp: App {
                 Button("Clear All Marks") { session.markAllPending(as: .undecided) }
             }
         }
+
+        // Utility windows: single-instance, not resizable into odd shapes, and
+        // absent from the Window menu's document list.
+        Window("About RollScrub", id: "about") {
+            AboutView()
+        }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
+
+        Window("RollScrub Help", id: "help") {
+            HelpView()
+        }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
     }
 }
