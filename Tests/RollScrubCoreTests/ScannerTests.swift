@@ -162,6 +162,25 @@ final class ScannerTests: XCTestCase {
         XCTAssertTrue(result.groups.isEmpty)
     }
 
+    /// Photos keeps originals and its own derivatives inside the package and
+    /// tracks them in a database. Sweeping in there offers up files Photos is
+    /// relying on, and removing them corrupts the library — the same reason
+    /// Final Cut bundles are left alone.
+    func testManagedPhotoLibrariesAreSkipped() throws {
+        let bytes = payload(seed: 21, count: 300_000)
+        try write("Loose/holiday.jpg", bytes: bytes)
+        try write("Photos Library.photoslibrary/originals/0/holiday.jpg", bytes: bytes)
+        try write("Photos Library.photoslibrary/resources/derivatives/holiday.jpg", bytes: bytes)
+        try write("Old.aplibrary/Masters/holiday.jpg", bytes: bytes)
+
+        let result = scan()
+
+        XCTAssertEqual(result.filesScanned, 1,
+                       "nothing inside a managed photo library may be scanned")
+        XCTAssertTrue(result.groups.isEmpty,
+                      "a managed library's own copies are not duplicates to remove")
+    }
+
     func testZeroByteFilesAreSkipped() throws {
         try write("A/empty-one.jpg", bytes: Data())
         try write("A/empty-two.jpg", bytes: Data())
