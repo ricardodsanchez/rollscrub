@@ -1,0 +1,11 @@
+{
+  // Static-assets-only Worker: no `main` script, so Cloudflare serves site/
+  // directly. site/ is the domain root, which is what puts the appcast at
+  // https://rollscrub.com/appcast.xml — the exact URL compiled into every
+  // shipped copy of the app.
+  "name": "rollscrub",
+  "compatibility_date": "2026-09-12",
+  "assets": {
+    "directory": "./site"
+  }
+}
