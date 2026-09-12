@@ -104,7 +104,8 @@ final class ReportWriterTests: XCTestCase {
             kind: .video, size: 1000, keep: "/a/C0001.mp4", remove: ["/a/C0001 2.mp4"])
         let result = ScanResult(
             roots: [URL(fileURLWithPath: "/a")], includes: [], startedAt: Date(), duration: 1,
-            filesScanned: 2, unreadableFiles: 0, filesRejectedByVerification: 0, groups: [group])
+            filesScanned: 2, unreadableFiles: 0, notDownloadedFiles: 0,
+            filesRejectedByVerification: 0, groups: [group])
 
         let lines = ReportWriter.csv(for: result).split(separator: "\n").map(String.init)
         XCTAssertEqual(lines[0], "group,type,size_bytes,size_human,action,full_path")

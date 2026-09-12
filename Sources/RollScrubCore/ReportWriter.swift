@@ -50,6 +50,10 @@ public enum ReportWriter {
         if result.unreadableFiles > 0 {
             out += "Unreadable (skipped): \(grouped(result.unreadableFiles))\n"
         }
+        if result.notDownloadedFiles > 0 {
+            out += "In iCloud, not here : \(grouped(result.notDownloadedFiles))"
+            out += "  (reading one would download it, so they were skipped)\n"
+        }
         if result.filesRejectedByVerification > 0 {
             out += "Rejected by verify  : \(grouped(result.filesRejectedByVerification))"
             out += "  (looked identical, differed on full compare)\n"

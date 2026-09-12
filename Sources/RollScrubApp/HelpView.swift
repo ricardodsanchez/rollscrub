@@ -18,6 +18,11 @@ struct HelpView: View {
                              + "drive show up as one pair.")
                     HelpText("Scanning only reads. Nothing is moved, changed, or deleted "
                              + "while a scan runs.")
+                    HelpText("Files kept in iCloud but not downloaded to this Mac are "
+                             + "counted and skipped, never compared. Reading a single byte "
+                             + "of one downloads the whole file, so a scan would otherwise "
+                             + "pull your library back over the network just to look at it. "
+                             + "To include them, download them in Finder first and scan again.")
                 }
 
                 HelpSection("How matches are found") {

@@ -48,6 +48,9 @@ public struct ScanResult {
     public let duration: TimeInterval
     public let filesScanned: Int
     public let unreadableFiles: Int
+    /// Kept in iCloud but not present on this Mac. Reading one downloads it in
+    /// full, so they are skipped rather than silently pulled over the network.
+    public let notDownloadedFiles: Int
     /// Files the head+tail signature clustered together but that byte-for-byte
     /// comparison then rejected. Every one of these would have been a wrong
     /// REMOVE without the verification pass.

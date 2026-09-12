@@ -5,6 +5,9 @@ public final class DuplicateScanner {
 
     private let config: ScanConfig
     private let progress: ((ScanPhase) -> Void)?
+    /// Files in iCloud that are not on this Mac, counted during enumeration so
+    /// the report can account for them rather than leaving a silent gap.
+    private var notDownloaded = 0
 
     public init(config: ScanConfig, progress: ((ScanPhase) -> Void)? = nil) {
         self.config = config
@@ -40,6 +43,7 @@ public final class DuplicateScanner {
             duration: elapsed,
             filesScanned: files.count,
             unreadableFiles: candidates.count - signed.count,
+            notDownloadedFiles: notDownloaded,
             filesRejectedByVerification: clusteredFiles - confirmedFiles,
             groups: groups
         )
@@ -48,10 +52,14 @@ public final class DuplicateScanner {
     // MARK: - Step 1: enumerate and filter
 
     private func enumerateMedia() -> [MediaFile] {
-        let keys: [URLResourceKey] = [.isRegularFileKey, .isDirectoryKey, .fileSizeKey, .nameKey]
+        let keys: [URLResourceKey] = [
+            .isRegularFileKey, .isDirectoryKey, .fileSizeKey, .nameKey,
+            .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey,
+        ]
         let keySet = Set(keys)
         let fm = FileManager.default
         var files: [MediaFile] = []
+        notDownloaded = 0
 
         for scanRoot in config.scanRoots {
             guard let enumerator = fm.enumerator(
@@ -76,6 +84,17 @@ public final class DuplicateScanner {
                 guard !SkipRules.shouldSkip(fileNamed: name) else { continue }
                 guard let size = values.fileSize, size > 0 else { continue }
                 guard let kind = MediaKind(pathExtension: url.pathExtension) else { continue }
+
+                // A file kept in iCloud but evicted from this Mac still has a
+                // name and a size, and reading a single byte of it downloads
+                // the whole thing. Comparing a library that way would pull
+                // gigabytes back over the network, silently, just to look at
+                // it — so these are counted and left alone.
+                if values.isUbiquitousItem == true,
+                   values.ubiquitousItemDownloadingStatus != .current {
+                    notDownloaded += 1
+                    continue
+                }
 
                 files.append(MediaFile(path: url.path, size: Int64(size), kind: kind))
                 if files.count % 2000 == 0 {
