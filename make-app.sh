@@ -44,6 +44,10 @@ cp "$BINPATH/RollScrubApp" "$STAGE/Contents/MacOS/RollScrub"
 # symlinks, which cp flattens and codesign then rejects.
 ditto "$BINPATH/Sparkle.framework" "$STAGE/Contents/Frameworks/Sparkle.framework"
 
+# Regenerate from icon/make-icon.py when that changes; committed so a build
+# never depends on Python being present.
+cp icon/RollScrub.icns "$STAGE/Contents/Resources/RollScrub.icns"
+
 # The linked binary carries no @executable_path rpath, so @rpath/Sparkle.framework
 # resolves nowhere once bundled. Added here rather than through unsafeFlags in
 # Package.swift, which would bar this package from ever being a dependency.
@@ -59,6 +63,7 @@ cat > "$STAGE/Contents/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key>       <string>RollScrub</string>
   <key>CFBundleIdentifier</key>        <string>com.rollscrub.RollScrub</string>
   <key>CFBundleExecutable</key>        <string>RollScrub</string>
+  <key>CFBundleIconFile</key>          <string>RollScrub</string>
   <key>CFBundlePackageType</key>       <string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key>           <string>$BUILD</string>
