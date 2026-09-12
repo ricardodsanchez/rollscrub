@@ -736,8 +736,8 @@
       </div>
       <div class="guard">
         <span class="mono-flag">Never entered</span>
-        <h3>Final Cut libraries stay sealed</h3>
-        <p>Files inside an <span style="font-family:var(--mono);font-size:12.5px">.fcpbundle</span> are legitimately identical to originals elsewhere. Descending into one and "deduplicating" it corrupts the library, so RollScrub doesn't look inside.</p>
+        <h3>Photo libraries stay sealed</h3>
+        <p>Photos, Lightroom, Aperture and Final Cut libraries keep your originals and their own generated copies together under a database. Removing one leaves the app pointing at a file that isn't there, so RollScrub never looks inside.</p>
       </div>
       <div class="guard">
         <span class="mono-flag">Reversible</span>
@@ -830,8 +830,9 @@
       </details>
       <details>
         <summary>Does it touch my Photos or Lightroom library?</summary>
-        <p>It reads whatever folders you choose, including the originals inside a Lightroom library if you point it there. It never writes to a catalog or database — removals go to the Trash, and you should re-sync your catalog afterwards the way you would after any change made outside the app.</p>
-        <p>Final Cut Pro libraries are skipped entirely: their internal media is meant to be duplicated, and pruning it corrupts the library.</p>
+        <p>No. Photos, Lightroom, Aperture and Final Cut Pro libraries are skipped entirely — RollScrub never reads or writes inside them. Each keeps your originals alongside its own generated copies under a database, so those copies are <em>meant</em> to be identical to files elsewhere, and removing one leaves the app pointing at a file that is no longer there. Apple's guidance is not to alter a photo library's contents in the Finder at all.</p>
+        <p>For duplicates inside Photos, use its own Duplicates view under Utilities in the sidebar — it merges them, so keywords, albums and edits survive, which a file-level tool cannot do. Lightroom has plugins that work the same way, through its catalogue.</p>
+        <p>RollScrub is for everything outside those libraries: exports, card dumps, backup drives, Downloads, iCloud Drive — where copies pile up and nothing is keeping track.</p>
       </details>
       <details>
         <summary>What if it's wrong?</summary>

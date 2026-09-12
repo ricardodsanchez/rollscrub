@@ -31,11 +31,15 @@ public enum SkipRules {
     /// relying on — and removing them corrupts the library, silently, with the
     /// damage only surfacing later. Photos has its own Duplicates view for the
     /// job this app would otherwise be doing badly.
+    /// Lightroom Classic is unaffected: it keeps a .lrcat catalogue beside
+    /// ordinary folders of originals, and those folders scan normally. Only
+    /// Lightroom's packaged .lrlibrary manages its contents this way.
     public static let managedLibrarySuffixes = [
         ".fcpbundle",          // Final Cut Pro
         ".photoslibrary",      // Photos
         ".aplibrary",          // Aperture
         ".migratedaplibrary",  // Aperture, after migration
+        ".lrlibrary",          // Lightroom
     ]
 
     public static func shouldPrune(directoryNamed name: String) -> Bool {

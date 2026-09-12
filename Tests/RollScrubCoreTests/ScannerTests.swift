@@ -172,6 +172,7 @@ final class ScannerTests: XCTestCase {
         try write("Photos Library.photoslibrary/originals/0/holiday.jpg", bytes: bytes)
         try write("Photos Library.photoslibrary/resources/derivatives/holiday.jpg", bytes: bytes)
         try write("Old.aplibrary/Masters/holiday.jpg", bytes: bytes)
+        try write("Lightroom Library.lrlibrary/originals/2024/holiday.jpg", bytes: bytes)
 
         let result = scan()
 

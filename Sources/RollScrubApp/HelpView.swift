@@ -64,6 +64,25 @@ struct HelpView: View {
                              + "**Retry failed**.")
                 }
 
+                HelpSection("Photo libraries are left alone") {
+                    HelpText("RollScrub never looks inside a **Photos**, **Lightroom**, "
+                             + "**Aperture** or **Final Cut Pro** library. Each of those "
+                             + "keeps your originals and its own generated copies together "
+                             + "under a database, so the copies are meant to be identical "
+                             + "to files elsewhere — and removing one leaves the app "
+                             + "pointing at a file that is no longer there. Apple's own "
+                             + "guidance is not to alter a photo library's contents in the "
+                             + "Finder at all.")
+                    HelpText("For duplicates **inside** your Photos library, use Photos' "
+                             + "own Duplicates view, in the sidebar under Utilities. It "
+                             + "merges duplicates rather than deleting files, so keywords, "
+                             + "albums and edits survive. Lightroom has duplicate-finding "
+                             + "plugins that work the same way, through its catalogue.")
+                    HelpText("RollScrub is for everything outside those libraries: exports, "
+                             + "card dumps, backup drives, Downloads, iCloud Drive — where "
+                             + "copies pile up and nothing is keeping track.")
+                }
+
                 HelpSection("Your progress is saved") {
                     HelpText("Marks are remembered per scan, so closing the window and "
                              + "coming back to a long review picks up where you left off.")
