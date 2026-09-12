@@ -121,6 +121,45 @@ final class ReviewSessionTests: XCTestCase {
         XCTAssertEqual(session.item(id: doomed.id)?.state, .pending)
     }
 
+    /// After a successful removal the pair must leave the review queue: gone
+    /// from the counts, gone from every filter that drives the sidebar list.
+    func testTrashedPairsLeaveTheQueueAndTheCounts() async throws {
+        let result = try scanFixture(count: 3)
+        let session = ReviewSession()
+        session.load(scanResult: result, root: root)
+        session.markAllPending(as: .discard)
+
+        XCTAssertEqual(session.undecidedCount, 0)
+        XCTAssertEqual(session.markedForDiscard.count, 3)
+
+        await session.apply()
+
+        XCTAssertEqual(session.trashedCount, 3, "all three should have been trashed")
+        XCTAssertEqual(session.failedCount, 0)
+
+        // The counts the status bar and the filter menu read from.
+        XCTAssertEqual(session.markedForDiscard.count, 0, "trashed pairs are not still pending removal")
+        XCTAssertEqual(session.undecidedCount, 0)
+        XCTAssertEqual(session.count(for: .pending), 0)
+        XCTAssertEqual(session.count(for: .discard), 0)
+        XCTAssertEqual(session.resolvedCount, 3)
+        XCTAssertEqual(session.reclaimableBytes, 0, "nothing is left to reclaim")
+
+        // The lists the sidebar renders.
+        session.filter = .pending
+        XCTAssertTrue(session.filtered.isEmpty)
+        session.filter = .discard
+        XCTAssertTrue(session.filtered.isEmpty)
+        session.filter = .resolved
+        XCTAssertEqual(session.filtered.count, 3)
+
+        XCTAssertTrue(session.isComplete)
+        for item in session.items {
+            XCTAssertFalse(exists(item.candidateURL), "the duplicate should be gone from disk")
+            XCTAssertTrue(exists(item.keepURL), "the kept copy must survive")
+        }
+    }
+
     func testKeepDecisionLeavesAScannedFileWhereItIs() async throws {
         let result = try scanFixture(count: 1)
         let session = ReviewSession()
