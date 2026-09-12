@@ -32,6 +32,7 @@
     --text-faint: #928B82;
     --accent: #C45A16;
     --accent-soft: rgba(196, 90, 22, 0.10);
+    --on-accent: #FFF8F2;
     --verify: #3F7D5E;
     --verify-soft: rgba(63, 125, 94, 0.10);
     --strip: #201D1A;
@@ -57,6 +58,7 @@
       --text-faint: #7C736B;
       --accent: #E8833A;
       --accent-soft: rgba(232, 131, 58, 0.14);
+      --on-accent: #17120D;
       --verify: #7FBE99;
       --verify-soft: rgba(127, 190, 153, 0.13);
       --strip: #0B0A09;
@@ -75,6 +77,7 @@
     --text-faint: #7C736B;
     --accent: #E8833A;
     --accent-soft: rgba(232, 131, 58, 0.14);
+    --on-accent: #17120D;
     --verify: #7FBE99;
     --verify-soft: rgba(127, 190, 153, 0.13);
     --strip: #0B0A09;
@@ -166,11 +169,12 @@
     padding: 11px 20px;
     border: 1px solid var(--accent);
     background: var(--accent);
-    color: #FFF8F2;
+    /* Through a token, not a per-theme override of .btn: that override
+       outranked .btn.ghost on specificity and painted the ghost button's
+       label near-black on a dark ground. */
+    color: var(--on-accent);
     transition: opacity 0.15s ease;
   }
-  :root[data-theme="dark"] .btn { color: #17120D; }
-  :root:not([data-theme="light"]) { @media (prefers-color-scheme: dark) { .btn { color: #17120D; } } }
 
   .btn:hover { opacity: 0.86; }
   .btn.small { padding: 8px 15px; font-size: 14px; }
@@ -448,8 +452,19 @@
   .amount { font-family: var(--display); font-weight: 800; font-size: 42px; letter-spacing: -0.03em; line-height: 1; }
   .amount span { font-family: var(--mono); font-size: 12px; font-weight: 400; letter-spacing: 0; color: var(--text-faint); margin-left: 8px; }
   .price ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14.5px; color: var(--text-dim); }
-  .price li { display: flex; gap: 9px; align-items: baseline; }
-  .price li::before { content: "—"; color: var(--accent); font-family: var(--mono); font-size: 11px; flex: none; }
+  /* The dash is positioned, not a flex sibling: as a flex container every
+     inline span inside a line ("--move", "--undo") became its own flex item
+     and got laid out as a separate column with gaps between. */
+  .price li { position: relative; padding-left: 20px; }
+  .price li::before {
+    content: "—";
+    position: absolute;
+    left: 0;
+    top: 0;
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 11px;
+  }
   .price .btn { text-align: center; margin-top: auto; }
 
   .todo {
