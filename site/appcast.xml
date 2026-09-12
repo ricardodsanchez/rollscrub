@@ -8,9 +8,9 @@
             <sparkle:version>2</sparkle:version>
             <sparkle:shortVersionString>1.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://rollscrub.com/releases/RollScrub-1.1.zip" length="1904668" type="application/octet-stream" sparkle:edSignature="mEQALiQgBMNHzJ0zwvvvogQS64hV5eOLH/0OmYhl1o944AKznFigP2unsaDjXP/y52ebcy3/JplCyvxWlpL2AA=="/>
+            <enclosure url="https://rollscrub.com/releases/RollScrub-1.1.zip" length="2018747" type="application/octet-stream" sparkle:edSignature="UJMgmCveyazHNhkwBKpsZkf0k4zgu3+yDIj9byWrS3vLTYa2Nxck1d0AU+NOxJQYUo7yjO57UBhrA1XfK+I0BA=="/>
             <sparkle:deltas>
-                <enclosure url="https://rollscrub.com/releases/RollScrub2-1.delta" sparkle:deltaFrom="1" length="99266" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="UGOlGNlhjnY3Ig2r2g9Iwl1bIrlKF02X8iBA57Im2qavRhCu9oJVVQxtV2/2sAaClk88KSJkxh5Oi4XXgX2fAg=="/>
+                <enclosure url="https://rollscrub.com/releases/RollScrub2-1.delta" sparkle:deltaFrom="1" length="211942" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="4Yb4BPpTA8B3AsUkC3sE6kSv6M1kiLxqXGDgMYdM0nImQy1/Fo9f5EvaFEySb50lIK3XLLSHvv02cxFRFU27Bg=="/>
             </sparkle:deltas>
         </item>
         <item>
