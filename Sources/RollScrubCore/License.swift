@@ -14,6 +14,14 @@ public enum License {
     /// deciding whether it is worth paying for.
     public static let purchaseURL = URL(string: "https://rollscrub.com/#pricing")!
 
+    /// The Lemon Squeezy product these keys must belong to.
+    ///
+    /// The licence API answers for the whole platform, not for one store: it
+    /// will happily confirm that someone else's $3 key is valid. Without this
+    /// check, any key bought from any seller on Lemon Squeezy would unlock
+    /// RollScrub.
+    static let productID = 1_358_068
+
     public struct State: Codable, Equatable, Sendable {
         public var key: String
         public var instanceID: String
@@ -81,6 +89,16 @@ public enum License {
             throw ActivationError.refused("The licence server sent an unexpected reply.")
         }
 
+        // Checked after activating rather than before, so the happy path stays
+        // one round trip — but the instance we just created on someone else's
+        // licence is released again, rather than silently eating one of their
+        // activations because they mistyped a key here.
+        guard isOurs(json) else {
+            _ = try? await post("deactivate", ["license_key": key, "instance_id": id])
+            throw ActivationError.refused(
+                "That key is for a different product, not RollScrub.")
+        }
+
         let state = State(key: key, instanceID: id, lastValidated: Date())
         try store(state)
         return state
@@ -102,6 +120,10 @@ public enum License {
         }
 
         if let valid = json["valid"] as? Bool, valid {
+            // Re-checked on every validation, not just at activation: a key
+            // stored by an older build that lacked this check should stop
+            // unlocking removal the first time it is re-examined.
+            guard isOurs(json) else { forget(); return }
             state.lastValidated = Date()
             try? store(state)
         } else if json["error"] != nil {
@@ -117,6 +139,18 @@ public enum License {
             "instance_id": state.instanceID,
         ])
         forget()
+    }
+
+    /// Whether a licence-API reply describes a key for this product.
+    ///
+    /// Absent or unparseable metadata counts as "not ours". The server always
+    /// sends it, so its absence means something other than Lemon Squeezy
+    /// answered — which is exactly when refusing is the safe direction.
+    static func isOurs(_ json: [String: Any]) -> Bool {
+        guard let meta = json["meta"] as? [String: Any],
+              let product = meta["product_id"] as? Int
+        else { return false }
+        return product == productID
     }
 
     // MARK: - Transport
