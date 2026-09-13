@@ -14,15 +14,44 @@
 
 const DAY = () => new Date().toISOString().slice(0, 10);
 
+/** Sparkle sends "RollScrub/1.0 Sparkle/2.6.0"; keep only the app version. */
+function appVersion(userAgent) {
+  const m = /RollScrub\/(\d+(?:\.\d+){0,2})/.exec(userAgent ?? "");
+  return m ? m[1] : "unknown";
+}
+
+/**
+ * The site someone arrived from, host only — never the full URL, which can
+ * carry search terms and other people's query strings. Same-origin and absent
+ * referrers are both "direct".
+ */
+function referrerHost(request) {
+  const referer = request.headers.get("referer");
+  if (!referer) return null;
+  try {
+    const host = new URL(referer).hostname;
+    return host === new URL(request.url).hostname ? null : host.slice(0, 80);
+  } catch {
+    return null;
+  }
+}
+
 /** What kind of event a path represents, or null to count nothing. */
-function classify(pathname) {
+function classify(pathname, request) {
   if (pathname === "/appcast.xml") {
     // Sparkle polling for updates. One per install per check, so this tracks
-    // roughly how many copies are alive, not how many were ever downloaded.
-    return { kind: "update-check", name: "appcast" };
+    // roughly how many copies are alive — and which version each is on, which
+    // is how you watch an update actually reach people.
+    return {
+      kind: "update-check",
+      name: appVersion(request.headers.get("user-agent")),
+    };
   }
   if (pathname.startsWith("/releases/") && pathname.endsWith(".zip")) {
     return { kind: "download", name: pathname.slice("/releases/".length) };
+  }
+  if (pathname === "/" || pathname === "/index.html") {
+    return { kind: "pageview", name: "/" };
   }
   return null;
 }
@@ -40,6 +69,19 @@ async function record(env, event, request) {
   } catch {
     // A failed write must never cost somebody their download.
   }
+}
+
+/**
+ * Referrer hosts are chosen by whoever sends the request, so they reach the
+ * stats page as untrusted text. Escaped on the way out — the one reader of
+ * this page is the person with the token, and injecting script into their
+ * session is exactly what an attacker would aim a crafted Referer at.
+ */
+function esc(value) {
+  return String(value).replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+  );
 }
 
 function html(body) {
@@ -83,8 +125,17 @@ async function stats(request, env) {
     `SELECT country, SUM(count) AS n FROM events WHERE kind = 'download'
      GROUP BY country ORDER BY n DESC LIMIT 10`
   ).all();
+  const sources = await env.STATS.prepare(
+    `SELECT name, SUM(count) AS n FROM events WHERE kind = 'referrer'
+     GROUP BY name ORDER BY n DESC LIMIT 15`
+  ).all();
+  const versions = await env.STATS.prepare(
+    `SELECT name, SUM(count) AS n FROM events WHERE kind = 'update-check'
+     GROUP BY name ORDER BY n DESC`
+  ).all();
   const daily = await env.STATS.prepare(
     `SELECT day,
+            SUM(CASE WHEN kind = 'pageview' THEN count ELSE 0 END) AS views,
             SUM(CASE WHEN kind = 'download' THEN count ELSE 0 END) AS downloads,
             SUM(CASE WHEN kind = 'update-check' THEN count ELSE 0 END) AS checks
      FROM events GROUP BY day ORDER BY day DESC LIMIT 30`
@@ -96,31 +147,49 @@ async function stats(request, env) {
     res.results.map((r) => `<tr>${cols.map((c) => c(r)).join("")}</tr>`).join("") ||
     `<tr><td class="muted" colspan="9">Nothing yet.</td></tr>`;
 
+  const views = total("pageview");
+  const downloads = total("download");
+  // The number the page is actually for: of everyone who read it, how many
+  // wanted the app enough to fetch it.
+  const rate = views ? `${((downloads / views) * 100).toFixed(1)}%` : "—";
+
   return html(`
 <h1>RollScrub</h1>
 <div class="row">
-  <div><div class="big">${total("download")}</div><div class="muted">downloads</div></div>
+  <div><div class="big">${views}</div><div class="muted">page views</div></div>
+  <div><div class="big">${downloads}</div><div class="muted">downloads</div></div>
+  <div><div class="big">${rate}</div><div class="muted">of readers download</div></div>
   <div><div class="big">${total("update-check")}</div><div class="muted">update checks</div></div>
 </div>
 
+<h2>Where readers come from</h2>
+<table><tr><th>Source</th><th class="n">Visits</th></tr>
+${rows(sources, [(r) => `<td>${esc(r.name)}</td>`, (r) => `<td class="n">${r.n}</td>`])}</table>
+
+<h2>Live installs by version</h2>
+<table><tr><th>Version</th><th class="n">Update checks</th></tr>
+${rows(versions, [(r) => `<td>${esc(r.name)}</td>`, (r) => `<td class="n">${r.n}</td>`])}</table>
+
 <h2>By file</h2>
 <table><tr><th>File</th><th class="n">Downloads</th></tr>
-${rows(files, [(r) => `<td>${r.name}</td>`, (r) => `<td class="n">${r.n}</td>`])}</table>
+${rows(files, [(r) => `<td>${esc(r.name)}</td>`, (r) => `<td class="n">${r.n}</td>`])}</table>
 
 <h2>By country</h2>
 <table><tr><th>Country</th><th class="n">Downloads</th></tr>
-${rows(countries, [(r) => `<td>${r.country}</td>`, (r) => `<td class="n">${r.n}</td>`])}</table>
+${rows(countries, [(r) => `<td>${esc(r.country)}</td>`, (r) => `<td class="n">${r.n}</td>`])}</table>
 
 <h2>Last 30 days</h2>
-<table><tr><th>Day</th><th class="n">Downloads</th><th class="n">Update checks</th></tr>
+<table><tr><th>Day</th><th class="n">Views</th><th class="n">Downloads</th><th class="n">Update checks</th></tr>
 ${rows(daily, [
   (r) => `<td>${r.day}</td>`,
+  (r) => `<td class="n">${r.views}</td>`,
   (r) => `<td class="n">${r.downloads}</td>`,
   (r) => `<td class="n">${r.checks}</td>`,
 ])}</table>
 
-<p class="muted">Daily counts per file and country. No addresses, agents or
-cookies are recorded.</p>`);
+<p class="muted">Daily counts per file, version, source and country. No
+addresses, user agents or cookies are recorded, and nothing here identifies a
+person.</p>`);
 }
 
 export default {
@@ -132,9 +201,15 @@ export default {
     // Range requests are how a resumed or chunked download arrives, and
     // counting each one would report a single download several times over.
     // HEAD is a probe, not a download.
-    const event = classify(url.pathname);
+    const event = classify(url.pathname, request);
     if (event && request.method === "GET" && !request.headers.has("range")) {
       ctx.waitUntil(record(env, event, request));
+
+      // Where a reader came from, counted alongside the visit itself.
+      const from = event.kind === "pageview" ? referrerHost(request) : null;
+      if (from) {
+        ctx.waitUntil(record(env, { kind: "referrer", name: from }, request));
+      }
     }
 
     return env.ASSETS.fetch(request);
