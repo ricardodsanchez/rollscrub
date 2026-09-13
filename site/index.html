@@ -206,17 +206,15 @@
 
   /* ---------- hero ---------- */
 
+  /* Single column since the screenshot moved below it: a dense app window
+     squeezed into half a hero is unreadable, and an unreadable screenshot
+     proves nothing. The text keeps its own measure rather than running the
+     full width of the page. */
   .hero {
-    display: grid;
-    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
-    gap: clamp(32px, 5vw, 68px);
-    align-items: center;
-    padding-block: clamp(48px, 7vw, 88px);
+    padding-block: clamp(44px, 6vw, 76px) clamp(28px, 4vw, 44px);
   }
 
-  @media (max-width: 900px) {
-    .hero { grid-template-columns: 1fr; }
-  }
+  .hero > div { max-width: 68ch; }
 
   .hero h1 {
     font-size: clamp(42px, 6.2vw, 68px);
@@ -249,111 +247,35 @@
     margin-top: 14px;
   }
 
-  /* ---------- contact sheet ---------- */
+  /* ---------- screenshot ---------- */
 
-  .sheet {
-    background: var(--strip);
-    padding: 16px 14px 12px;
+  .shot {
+    margin: 0 auto clamp(56px, 8vw, 96px);
+    max-width: 1120px;
+    padding-inline: var(--edge);
+  }
+
+  .shot img {
+    display: block;
+    width: 100%;
+    height: auto;
     border: 1px solid var(--frame-strong);
+    background: var(--strip);
   }
 
-  .sheet-rail {
+  .shot figcaption {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
+    gap: 9px;
+    margin-top: 14px;
     font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--strip-dim);
-    padding-bottom: 10px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-faint);
+    max-width: 78ch;
   }
 
-  .frames {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
-  }
-
-  .frame {
-    position: relative;
-    background: #17140F;
-    border: 1px solid #322C26;
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 7px;
-    min-height: 132px;
-  }
-
-  /* The photograph, drawn the way the app icon draws it: a horizon with a low
-     sun. Not a fake image and not a stock photo — the same two shapes the mark
-     uses, so the contact sheet and the icon are recognisably one product.
-     --plate tints the sky so the four frames read as different exposures. */
-  .plate {
-    position: relative;
-    flex: 1;
-    overflow: hidden;
-    background:
-      linear-gradient(170deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.01) 60%),
-      var(--plate, var(--sky));
-  }
-
-  /* The horizon: one clipped wedge, no extra markup per frame. */
-  .plate::after {
-    content: "";
-    position: absolute;
-    inset: 46% 0 0;
-    background: var(--hill);
-    clip-path: polygon(0 62%, 26% 18%, 46% 46%, 70% 6%, 100% 54%, 100% 100%, 0 100%);
-  }
-
-  .plate::before {
-    content: "";
-    position: absolute;
-    top: 22%;
-    right: 15%;
-    width: 13%;
-    aspect-ratio: 1;
-    border-radius: 50%;
-    background: var(--sun);
-  }
-
-  .frame-id {
-    font-family: var(--mono);
-    font-size: 9.5px;
-    line-height: 1.35;
-    color: var(--strip-dim);
-    word-break: break-all;
-  }
-
-  .frame.marked { border-color: var(--accent); }
-
-  .tag {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    font-family: var(--mono);
-    font-size: 9px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    padding: 2px 6px;
-    color: #17120D;
-    background: var(--accent);
-  }
-
-  .tag.keep { background: var(--verify); }
-
-  .sheet-note {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding-top: 11px;
-    font-family: var(--mono);
-    font-size: 10.5px;
-    color: var(--strip-dim);
-  }
-
+  /* Shared by the screenshot caption. */
   .swatch {
     width: 9px;
     height: 9px;
@@ -586,38 +508,20 @@
       <p class="hero-meta">macOS 14 or later · Apple silicon &amp; Intel · Free to scan</p>
     </div>
 
-    <div class="sheet" role="img"
-         aria-label="A contact sheet of four frames. Two frames share identical bytes and are marked: one to keep, one to remove.">
-      <div class="sheet-rail">
-        <span>Contact sheet — 2024-05-14</span>
-        <span>4 frames · 2 identical</span>
-      </div>
-      <div class="frames">
-        <div class="frame">
-          <div class="plate" style="--plate:#54606B"></div>
-          <div class="frame-id">20240514-Q2-1001502.dng<br>41.2 MB</div>
-        </div>
-        <div class="frame marked">
-          <span class="tag keep">Keep</span>
-          <div class="plate" style="--plate:#6B5B45"></div>
-          <div class="frame-id">20240514-Q2-1001515.jpeg<br>15.5 MB</div>
-        </div>
-        <div class="frame marked">
-          <span class="tag">Remove</span>
-          <div class="plate" style="--plate:#6B5B45"></div>
-          <div class="frame-id">IMG_1515 copy.jpeg<br>15.5 MB</div>
-        </div>
-        <div class="frame">
-          <div class="plate" style="--plate:#3F4A42"></div>
-          <div class="frame-id">20240514-Q2-1001descr.mov<br>288 MB</div>
-        </div>
-      </div>
-      <div class="sheet-note">
-        <span class="swatch keep"></span>
-        <span>Identical across all 16,294,959 bytes — the renamed original stays.</span>
-      </div>
-    </div>
   </header>
+
+  <figure class="shot">
+    <img src="/review.webp" width="1600" height="952" fetchpriority="high" decoding="async"
+         alt="RollScrub's review window: the same photograph of Mount Rainier shown twice,
+              side by side. The left is marked &quot;Keeping this one&quot;, the right
+              &quot;Duplicate&quot;, and a badge reads &quot;Verified identical&quot;.">
+    <figcaption>
+      <span class="swatch keep"></span>
+      <span>Every pair, side by side, at full size — with both paths, both sizes, and
+      proof they match. Nothing moves until you say so.</span>
+    </figcaption>
+  </figure>
+
 </div>
 
 <section id="how">
