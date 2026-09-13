@@ -46,7 +46,7 @@ struct ComparisonView: View {
         HStack(spacing: 10) {
             Image(systemName: item.isVideo ? "film" : "photo")
                 .foregroundStyle(.secondary)
-            Text(item.filename)
+            Text(item.pairName)
                 .font(.headline)
                 .lineLimit(1)
                 .truncationMode(.middle)

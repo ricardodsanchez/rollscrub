@@ -45,6 +45,23 @@ final class ReviewSessionTests: XCTestCase {
         return DuplicateScanner(config: ScanConfig(root: root)).scan()
     }
 
+    /// The header above both panes names the pair. It must name the file that
+    /// stays: reading "…-2.DNG" there while the pane below says the keeper is
+    /// "….DNG" makes a correct decision look like a wrong one.
+    func testAPairIsNamedAfterTheFileThatStays() throws {
+        let result = try scanFixture(count: 2)
+        let session = ReviewSession()
+        session.load(scanResult: result, root: root)
+
+        for item in session.items {
+            XCTAssertEqual(item.pairName, item.keepURL.lastPathComponent)
+            XCTAssertNotEqual(item.pairName, item.filename,
+                              "the pair must not be named after the copy being removed")
+            XCTAssertFalse(item.pairName.contains(" 2"),
+                           "\(item.pairName) is the copy's name, not the original's")
+        }
+    }
+
     func testScanResultBecomesReviewablePairs() throws {
         let result = try scanFixture(count: 3)
         let session = ReviewSession()

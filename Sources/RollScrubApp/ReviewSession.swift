@@ -48,6 +48,10 @@ struct ReviewItem: Identifiable {
         return nil
     }
     var filename: String { candidateURL.lastPathComponent }
+    /// What to call the pair as a whole. The keeper's name, because a header
+    /// spanning both panes that reads "…-2.DNG" while the pane beneath it says
+    /// the file being kept is "….DNG" looks like the app picked the wrong one.
+    var pairName: String { keepURL.lastPathComponent }
     /// The folder the duplicate sits in, for telling apart same-named files
     /// found under different scanned roots.
     var folderName: String { candidateURL.deletingLastPathComponent().lastPathComponent }

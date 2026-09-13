@@ -6,15 +6,15 @@
  * token blocks is specific to long-form text and has no counterpart there. */
 
 :root {
-  --ground: #F1F0EC;
+  --ground: #F3F3F2;
   --surface: #FFFFFF;
-  --frame: #DCD9D2;
-  --text: #1B1917;
-  --text-dim: #6A635B;
-  --text-faint: #928B82;
-  --accent: #C45A16;
-  --strip: #201D1A;
-  --strip-text: #EDEAE4;
+  --frame: #DEDFE0;
+  --text: #191A1B;
+  --text-dim: #53585D;
+  --text-faint: #6A6F74;
+  --accent: #AE4E10;
+  --strip: #1A1C1D;
+  --strip-text: #ECEDEE;
 
   --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
   --body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
@@ -26,28 +26,28 @@
 
 :root:not([data-theme="light"]) {
   @media (prefers-color-scheme: dark) {
-    --ground: #131110;
-    --surface: #1C1917;
-    --frame: #302B27;
-    --text: #EFEBE5;
-    --text-dim: #A79E95;
-    --text-faint: #7C736B;
+    --ground: #121314;
+    --surface: #1A1C1D;
+    --frame: #2B2E30;
+    --text: #ECEDEE;
+    --text-dim: #9CA1A6;
+    --text-faint: #7D8287;
     --accent: #E8833A;
-    --strip: #0B0A09;
-    --strip-text: #EFEBE5;
+    --strip: #0D0E0F;
+    --strip-text: #ECEDEE;
   }
 }
 
 :root[data-theme="dark"] {
-  --ground: #131110;
-  --surface: #1C1917;
-  --frame: #302B27;
-  --text: #EFEBE5;
-  --text-dim: #A79E95;
-  --text-faint: #7C736B;
+  --ground: #121314;
+  --surface: #1A1C1D;
+  --frame: #2B2E30;
+  --text: #ECEDEE;
+  --text-dim: #9CA1A6;
+  --text-faint: #7D8287;
   --accent: #E8833A;
-  --strip: #0B0A09;
-  --strip-text: #EFEBE5;
+  --strip: #0D0E0F;
+  --strip-text: #ECEDEE;
 }
 
 * { box-sizing: border-box; }
