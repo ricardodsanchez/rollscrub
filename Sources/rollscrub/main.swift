@@ -211,6 +211,22 @@ guard shouldMove else {
     exit(0)
 }
 
+// Scanning and the reports are free; setting files aside is the paid action.
+// The licence lives in the keychain, so activating in the app covers this too.
+// --undo is deliberately never gated: reversing a move must always work.
+guard License.isPro() else {
+    print("""
+    --move needs a licence.
+
+    Scanning, the report and the CSV are free, and the report above already
+    lists every file that would be set aside. Activate a licence in the
+    RollScrub app — Menu → RollScrub → Unlock Removal — and re-run this.
+
+    \(License.purchaseURL.absoluteString)
+    """)
+    exit(3)
+}
+
 guard !result.groups.isEmpty else {
     print("No duplicates to move.")
     exit(0)

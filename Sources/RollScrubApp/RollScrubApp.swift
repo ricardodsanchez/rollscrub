@@ -5,11 +5,13 @@ struct RollScrubApp: App {
     // Owned here so the menu bar can drive the same session the window shows.
     @StateObject private var session = ReviewSession()
     @StateObject private var updater = Updater()
+    @StateObject private var license = LicenseModel()
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
         Window("RollScrub Review", id: "review") {
-            ContentView(session: session)
+            ContentView(session: session, license: license)
+                .task { license.revalidateQuietly() }
         }
         .windowToolbarStyle(.unified)
         .commands {
@@ -33,6 +35,12 @@ struct RollScrubApp: App {
                 Button("About RollScrub") { openWindow(id: "about") }
                 Button("Check for Updates…") { updater.checkForUpdates() }
                     .disabled(!updater.canCheckForUpdates)
+
+                Divider()
+
+                Button(license.isPro ? "Licence…" : "Unlock Removal…") {
+                    openWindow(id: "license")
+                }
             }
 
             // Replaces the default Help item, which otherwise looks for a help
@@ -72,6 +80,12 @@ struct RollScrubApp: App {
         // absent from the Window menu's document list.
         Window("About RollScrub", id: "about") {
             AboutView()
+        }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
+
+        Window(license.isPro ? "Licence" : "Unlock Removal", id: "license") {
+            LicenseView(model: license)
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)

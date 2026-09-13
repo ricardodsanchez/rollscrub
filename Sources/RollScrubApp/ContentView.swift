@@ -12,6 +12,8 @@ extension Notification.Name {
 
 struct ContentView: View {
     @ObservedObject var session: ReviewSession
+    @ObservedObject var license: LicenseModel
+    @Environment(\.openWindow) private var openWindow
     @StateObject private var scanner = ScanCoordinator()
     @State private var showApplyConfirmation = false
     /// Hidden until there is a review to show. Before a scan the sidebar holds
@@ -24,6 +26,21 @@ struct ContentView: View {
     /// bar then frame an empty list with "0 to review" and "Apply 0 decisions".
     private var hasReview: Bool {
         session.isLoaded && !session.items.isEmpty
+    }
+
+    /// Only removal is gated. Marking pairs "keep" is a decision to leave files
+    /// exactly where they are, and charging for that would be indefensible.
+    private var needsLicenceToApply: Bool {
+        !license.isPro && !session.markedForDiscard.isEmpty
+    }
+
+    private var applyButtonTitle: String {
+        if needsLicenceToApply {
+            return "Unlock to Remove \(session.markedForDiscard.count) files…"
+        }
+        return session.markedForDiscard.isEmpty
+            ? "Apply \(session.markedForKeep.count) decisions"
+            : "Remove \(session.markedForDiscard.count) files…"
     }
 
     var body: some View {
@@ -366,11 +383,15 @@ struct ContentView: View {
                 ProgressView().controlSize(.small)
             }
             Button {
-                showApplyConfirmation = true
+                // Keeping files needs no licence — only removal is paid, and
+                // a decision to leave something alone must never be blocked.
+                if needsLicenceToApply {
+                    openWindow(id: "license")
+                } else {
+                    showApplyConfirmation = true
+                }
             } label: {
-                Text(session.markedForDiscard.isEmpty
-                     ? "Apply \(session.markedForKeep.count) decisions"
-                     : "Remove \(session.markedForDiscard.count) files…")
+                Text(applyButtonTitle)
             }
             .buttonStyle(.borderedProminent)
             .disabled(
