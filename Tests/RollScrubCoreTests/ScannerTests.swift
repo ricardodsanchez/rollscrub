@@ -182,6 +182,41 @@ final class ScannerTests: XCTestCase {
                       "a managed library's own copies are not duplicates to remove")
     }
 
+    /// A home folder with a few checked-out projects in it holds far more
+    /// files under .git, .build and node_modules than everywhere else put
+    /// together, and none of them are anyone's photos. Walking them made a
+    /// scan of Documents take minutes instead of seconds.
+    func testToolingAndHiddenDirectoriesAreNotWalked() throws {
+        let bytes = payload(seed: 33, count: 300_000)
+        try write("Trip/beach.jpg", bytes: bytes)
+        try write(".git/annex/beach.jpg", bytes: bytes)
+        try write(".build/checkouts/Thing/beach.jpg", bytes: bytes)
+        try write("webapp/node_modules/pkg/assets/beach.jpg", bytes: bytes)
+        try write("ios/Pods/Lib/beach.jpg", bytes: bytes)
+        try write("py/__pycache__/beach.jpg", bytes: bytes)
+
+        let result = scan()
+
+        XCTAssertEqual(result.filesScanned, 1,
+                       "only the real photo is media; the rest is machine-generated")
+        XCTAssertTrue(result.groups.isEmpty,
+                      "a build artefact is not a duplicate of the user's photo")
+    }
+
+    /// Pruning hidden *directories* must not start skipping hidden files: a
+    /// photo named with a leading dot is still the user's photo.
+    func testHiddenFilesAreStillScanned() throws {
+        let bytes = payload(seed: 34, count: 300_000)
+        try write("Trip/.hidden-beach.jpg", bytes: bytes)
+        try write("Trip/beach.jpg", bytes: bytes)
+
+        let result = scan()
+
+        XCTAssertEqual(result.filesScanned, 2)
+        XCTAssertEqual(result.groups.count, 1,
+                       "a hidden file is still a duplicate of its visible twin")
+    }
+
     func testZeroByteFilesAreSkipped() throws {
         try write("A/empty-one.jpg", bytes: Data())
         try write("A/empty-two.jpg", bytes: Data())

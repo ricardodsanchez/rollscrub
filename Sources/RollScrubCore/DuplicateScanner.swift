@@ -52,13 +52,18 @@ public final class DuplicateScanner {
     // MARK: - Step 1: enumerate and filter
 
     private func enumerateMedia() -> [MediaFile] {
+        // Deliberately cheap: these come straight off the directory entry.
+        // The iCloud keys are NOT here — see the download check below.
         let keys: [URLResourceKey] = [
             .isRegularFileKey, .isDirectoryKey, .fileSizeKey, .nameKey,
-            .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey,
         ]
         let keySet = Set(keys)
+        let cloudKeys: Set<URLResourceKey> = [
+            .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey,
+        ]
         let fm = FileManager.default
         var files: [MediaFile] = []
+        var examined = 0
         notDownloaded = 0
 
         for scanRoot in config.scanRoots {
@@ -70,6 +75,14 @@ public final class DuplicateScanner {
             ) else { continue }
 
             while let url = enumerator.nextObject() as? URL {
+                // Ticked per entry examined rather than per media file found,
+                // so a long stretch of non-media still shows the scan moving.
+                // Reporting only on appends left the count frozen for minutes.
+                examined += 1
+                if examined % 4000 == 0 {
+                    progress?(.enumerating(filesFound: files.count))
+                }
+
                 guard let values = try? url.resourceValues(forKeys: keySet) else { continue }
                 let name = values.name ?? url.lastPathComponent
 
@@ -90,16 +103,21 @@ public final class DuplicateScanner {
                 // the whole thing. Comparing a library that way would pull
                 // gigabytes back over the network, silently, just to look at
                 // it — so these are counted and left alone.
-                if values.isUbiquitousItem == true,
-                   values.ubiquitousItemDownloadingStatus != .current {
+                //
+                // Asked only of files that already look like media. In an
+                // iCloud-synced folder this lookup is a round trip to the file
+                // provider — about a millisecond each — so requesting it for
+                // every entry the walk touches made scanning a Documents
+                // folder with a node_modules in it take minutes rather than
+                // seconds.
+                if let cloud = try? url.resourceValues(forKeys: cloudKeys),
+                   cloud.isUbiquitousItem == true,
+                   cloud.ubiquitousItemDownloadingStatus != .current {
                     notDownloaded += 1
                     continue
                 }
 
                 files.append(MediaFile(path: url.path, size: Int64(size), kind: kind))
-                if files.count % 2000 == 0 {
-                    progress?(.enumerating(filesFound: files.count))
-                }
             }
         }
 

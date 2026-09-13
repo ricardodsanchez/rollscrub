@@ -42,8 +42,28 @@ public enum SkipRules {
         ".lrlibrary",          // Lightroom
     ]
 
+    /// Directories full of machine-generated files that are never anyone's
+    /// photos, and are frequently enormous. A Documents folder with a few
+    /// checked-out projects in it holds far more files in here than in the
+    /// whole rest of the tree.
+    public static let toolingDirectoryNames: Set<String> = [
+        "node_modules",
+        "Pods",
+        "DerivedData",
+        "__pycache__",
+    ]
+
     public static func shouldPrune(directoryNamed name: String) -> Bool {
         if systemDirectoryNames.contains(name) { return true }
+        if toolingDirectoryNames.contains(name) { return true }
+
+        // Hidden directories hold application state, caches and version
+        // control — .git, .build, .venv, .cache. Nobody keeps the photos they
+        // want deduplicated inside one, and walking them is most of the cost
+        // of scanning a home folder. Hidden *files* are still examined; this
+        // only stops the scanner descending.
+        if name.hasPrefix(".") && name != "." && name != ".." { return true }
+
         let lowered = name.lowercased()
         return managedLibrarySuffixes.contains { lowered.hasSuffix($0) }
     }
