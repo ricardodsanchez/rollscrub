@@ -93,8 +93,8 @@ struct LicenseView: View {
                     Link("Buy a licence", destination: License.purchaseURL)
                 }
 
-                Text("Your key is in the email from your purchase. It works on every Mac "
-                     + "you own.")
+                Text("Your key is in the email from your purchase. It works on up to "
+                     + "three Macs at a time.")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
