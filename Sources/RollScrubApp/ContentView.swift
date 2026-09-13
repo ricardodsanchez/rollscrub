@@ -34,13 +34,20 @@ struct ContentView: View {
         !license.isPro && !session.markedForDiscard.isEmpty
     }
 
+    /// "1 files" in a button someone is about to press on their photographs
+    /// undermines the care the rest of the app is arguing for.
+    private static func count(_ n: Int, _ singular: String, _ plural: String) -> String {
+        "\(n) \(n == 1 ? singular : plural)"
+    }
+
     private var applyButtonTitle: String {
+        let files = Self.count(session.markedForDiscard.count, "file", "files")
         if needsLicenceToApply {
-            return "Unlock to Remove \(session.markedForDiscard.count) files…"
+            return "Unlock to Remove \(files)…"
         }
         return session.markedForDiscard.isEmpty
-            ? "Apply \(session.markedForKeep.count) decisions"
-            : "Remove \(session.markedForDiscard.count) files…"
+            ? "Apply \(Self.count(session.markedForKeep.count, "decision", "decisions"))"
+            : "Remove \(files)…"
     }
 
     var body: some View {
@@ -478,7 +485,10 @@ struct ContentView: View {
         }
         let restores = session.markedForKeep.filter { $0.originalPath != nil }.count
         if restores > 0 {
-            parts.append("\(restores) file(s) go back to their original folders.")
+            parts.append(
+                "\(Self.count(restores, "file", "files")) "
+                + "\(restores == 1 ? "goes" : "go") back to "
+                + "\(restores == 1 ? "its" : "their") original folder\(restores == 1 ? "" : "s").")
         }
         return parts.joined(separator: "\n\n")
     }
