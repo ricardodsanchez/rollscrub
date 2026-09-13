@@ -462,6 +462,56 @@
     font-size: 11px;
   }
   .price .btn { text-align: center; margin-top: auto; }
+  /* The paid card while the shop is closed: the price still stands, but the
+     action it offers is honest about what can actually happen today. */
+  .soon {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 13.5px;
+    line-height: 1.45;
+    color: var(--lead-dim);
+    margin: 0 0 12px;
+  }
+  .soon .dot {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    margin-top: 6px;
+    border-radius: 50%;
+    background: var(--sun);
+  }
+  .notify { margin-top: auto; display: block; }
+  .notify-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .notify input[type="email"] {
+    flex: 1 1 11rem;
+    min-width: 0;
+    font: inherit;
+    font-size: 15px;
+    padding: 10px 12px;
+    color: var(--lead-text);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 0;
+  }
+  .notify input[type="email"]::placeholder { color: var(--lead-dim); opacity: 0.7; }
+  .notify input[type="email"]:focus-visible {
+    outline: 2px solid var(--sun);
+    outline-offset: 2px;
+  }
+  .notify .btn { flex: 0 0 auto; cursor: pointer; }
+  .notify-status { font-size: 13px; margin: 10px 0 0; color: var(--sun); }
+  .notify-status:empty { display: none; }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px; height: 1px;
+    margin: -1px; padding: 0; border: 0;
+    clip-path: inset(50%);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
   /* Sits under the button, not in the feature list: it is a reason to click,
      not another thing you get. */
   .guarantee {
@@ -789,8 +839,19 @@
           <li>Use it on up to 3 Macs</li>
           <li>Free updates to every 1.x release</li>
         </ul>
-        <a class="btn" href="https://rollscrub.lemonsqueezy.com/checkout/buy/ac0eca7e-2d01-4c43-af3d-c12c926af7ed">Buy RollScrub Pro</a>
-        <p class="guarantee">30-day money-back guarantee. Email and it's refunded, no questions asked.</p>
+        <form class="notify" action="/notify" method="post">
+          <p class="soon"><span class="dot"></span> The shop opens in a few days — payment processing is still being approved.</p>
+          <label class="visually-hidden" for="notify-email">Your email address</label>
+          <div class="notify-row">
+            <input id="notify-email" name="email" type="email" required
+                   autocomplete="email" placeholder="you@example.com" spellcheck="false">
+            <button class="btn" type="submit">Email me when it opens</button>
+          </div>
+          <!-- Seen by bots, not by people. -->
+          <input class="visually-hidden" type="text" name="company" tabindex="-1" autocomplete="off" aria-hidden="true">
+          <p class="notify-status" role="status" aria-live="polite"></p>
+        </form>
+        <p class="guarantee">One email, then nothing else — and the address is deleted once it is sent. Scanning is free today; only removal waits on the shop.</p>
       </div>
     </div>
 
@@ -865,5 +926,32 @@
     </div>
   </div>
 </footer>
+<script>
+  // Progressive enhancement only: without JavaScript the form posts normally
+  // and the Worker answers with a plain page, so the address is never lost.
+  document.querySelectorAll("form.notify").forEach((form) => {
+    const status = form.querySelector(".notify-status");
+    const button = form.querySelector("button");
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      button.disabled = true;
+      status.textContent = "Adding you…";
+      try {
+        const response = await fetch(form.action, {
+          method: "POST",
+          headers: { "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify(Object.fromEntries(new FormData(form))),
+        });
+        const result = await response.json();
+        status.textContent = result.message;
+        if (result.ok) form.querySelector("input[type=email]").value = "";
+      } catch {
+        status.textContent = "Could not reach the server. Try again in a moment?";
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+</script>
 </body>
 </html>

@@ -84,7 +84,75 @@ function esc(value) {
   );
 }
 
-function html(body) {
+// ---------- notify list ----------
+
+/// Deliberately loose. The job is to catch a typo or a stray form post, not to
+/// adjudicate RFC 5322 — a real address that a strict pattern rejects is a
+/// customer turned away, which costs far more than a junk row.
+function looksLikeEmail(value) {
+  return typeof value === "string"
+    && value.length >= 6 && value.length <= 254
+    && /^[^\s@]+@[^\s@.]+\.[^\s@]+$/.test(value);
+}
+
+const NOTIFY_TABLE = `CREATE TABLE IF NOT EXISTS notify (
+  email TEXT PRIMARY KEY, day TEXT NOT NULL, country TEXT NOT NULL)`;
+
+async function addToNotifyList(env, email, request) {
+  const insert = () =>
+    env.STATS.prepare(
+      `INSERT INTO notify (email, day, country) VALUES (?, ?, ?)
+       ON CONFLICT(email) DO NOTHING`
+    )
+      .bind(email.toLowerCase(), DAY(), request.cf?.country ?? "??")
+      .run();
+
+  try {
+    await insert();
+  } catch (error) {
+    // The table is created here rather than by a migration so that deploying
+    // the Worker is all it takes; the alternative is a form that silently
+    // fails until someone remembers to run wrangler.
+    if (!/no such table/i.test(String(error))) throw error;
+    await env.STATS.prepare(NOTIFY_TABLE).run();
+    await insert();
+  }
+}
+
+async function notify(request, env) {
+  if (request.method !== "POST") {
+    return new Response("Method not allowed", { status: 405 });
+  }
+  const type = request.headers.get("content-type") ?? "";
+  const body = type.includes("application/json")
+    ? await request.json().catch(() => ({}))
+    : Object.fromEntries(await request.formData().catch(() => new FormData()));
+
+  const wantsJSON = (request.headers.get("accept") ?? "").includes("application/json");
+  const reply = (ok, message, status = ok ? 200 : 400) =>
+    wantsJSON
+      ? Response.json({ ok, message }, { status })
+      : html(`<h1>${ok ? "You're on the list" : "That didn't work"}</h1>
+              <p>${esc(message)}</p><p><a href="/">Back to RollScrub</a></p>`,
+             { status });
+
+  // A field no person sees and every naive bot fills in.
+  if (body.company) return reply(true, "Thanks — we'll be in touch.");
+
+  if (!looksLikeEmail(body.email)) {
+    return reply(false, "That doesn't look like an email address. Try again?");
+  }
+  if (!env.STATS) return reply(false, "The list isn't available right now.");
+
+  try {
+    await addToNotifyList(env, body.email, request);
+  } catch {
+    return reply(false, "Something went wrong saving that. Try again in a minute.");
+  }
+  return reply(true, "Thanks — you'll get one email when the shop opens, and nothing else.");
+}
+
+function html(body, init = {}) {
   return new Response(
     `<!doctype html><meta charset="utf-8"><title>RollScrub stats</title>
 <meta name="robots" content="noindex">
@@ -103,7 +171,7 @@ function html(body) {
   .row { display: flex; gap: 3rem; }
   .muted { opacity: .6; }
 </style>${body}`,
-    { headers: { "content-type": "text/html; charset=utf-8" } }
+    { ...init, headers: { "content-type": "text/html; charset=utf-8" } }
   );
 }
 
@@ -133,6 +201,12 @@ async function stats(request, env) {
     `SELECT name, SUM(count) AS n FROM events WHERE kind = 'update-check'
      GROUP BY name ORDER BY n DESC`
   ).all();
+  // Tolerates the table not existing yet: the stats page must still render
+  // before anyone has ever signed up.
+  const waiting = await env.STATS.prepare(
+    `SELECT email, day, country FROM notify ORDER BY day DESC, email`
+  ).all().catch(() => ({ results: [] }));
+
   const daily = await env.STATS.prepare(
     `SELECT day,
             SUM(CASE WHEN kind = 'pageview' THEN count ELSE 0 END) AS views,
@@ -161,6 +235,16 @@ async function stats(request, env) {
   <div><div class="big">${rate}</div><div class="muted">of readers download</div></div>
   <div><div class="big">${total("update-check")}</div><div class="muted">update checks</div></div>
 </div>
+
+<h2>Waiting for the shop to open (${waiting.results.length})</h2>
+<table><tr><th>Email</th><th>Signed up</th><th>From</th></tr>
+${rows(waiting, [
+  (r) => `<td>${esc(r.email)}</td>`,
+  (r) => `<td>${esc(r.day)}</td>`,
+  (r) => `<td>${esc(r.country)}</td>`,
+])}</table>
+<p class="muted">Mail these once, when the shop opens, then delete the list —
+it has one purpose and no reason to outlive it.</p>
 
 <h2>Where readers come from</h2>
 <table><tr><th>Source</th><th class="n">Visits</th></tr>
@@ -197,6 +281,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/stats") return stats(request, env);
+    if (url.pathname === "/notify") return notify(request, env);
 
     // Range requests are how a resumed or chunked download arrives, and
     // counting each one would report a single download several times over.
