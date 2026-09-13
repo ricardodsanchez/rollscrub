@@ -31,9 +31,14 @@ APPCAST_TOOL="$(find .build/artifacts -name generate_appcast -type f 2>/dev/null
 [ -n "$APPCAST_TOOL" ] || die "generate_appcast not found — run: swift package resolve"
 
 echo "==> building $VERSION ($BUILD)"
-VERSION="$VERSION" BUILD="$BUILD" ./make-app.sh
+# Built into a staging directory, not /Applications. Cutting a release should
+# not disturb the copy running on this Mac, and it must not depend on that copy
+# being quit — the artifact is what matters, and it is verified from the zip.
+DIST="$(mktemp -d)"
+trap 'rm -rf "$DIST"' EXIT
+VERSION="$VERSION" BUILD="$BUILD" ./make-app.sh "$DIST"
 
-APP="/Applications/RollScrub.app"
+APP="$DIST/RollScrub.app"
 INSTALLED="$(defaults read "$APP/Contents/Info.plist" CFBundleVersion)"
 [ "$INSTALLED" = "$BUILD" ] || die "built bundle reports build $INSTALLED, expected $BUILD"
 
