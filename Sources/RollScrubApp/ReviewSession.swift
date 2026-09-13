@@ -78,8 +78,28 @@ final class ReviewSession: ObservableObject {
         var id: String { rawValue }
     }
 
+    /// Orthogonal to `Filter`, not another case inside it: a folder of a card
+    /// dump holds stills and clips together, and they are reviewed quite
+    /// differently — a still is a glance, a clip means watching it. Keeping
+    /// the two axes separate means "videos still to review" is expressible.
+    enum MediaFilter: String, CaseIterable, Identifiable {
+        case all = "All media"
+        case photos = "Photos"
+        case videos = "Videos"
+        var id: String { rawValue }
+
+        var symbol: String {
+            switch self {
+            case .all: return "square.on.square"
+            case .photos: return "photo"
+            case .videos: return "film"
+            }
+        }
+    }
+
     @Published private(set) var items: [ReviewItem] = []
     @Published var filter: Filter = .pending
+    @Published var mediaFilter: MediaFilter = .all
     @Published var selection: ReviewItem.ID?
     /// What is loaded: a scanned folder, or a manifest from an older run.
     @Published private(set) var sourceDescription: String?
@@ -190,30 +210,66 @@ final class ReviewSession: ObservableObject {
         Task { @MainActor in self.selection = first }
     }
 
+    /// Called after a filter changes. Switching to Videos while a photo was
+    /// selected would otherwise leave the detail pane showing a file that is
+    /// no longer in the list beside it.
+    func reconcileSelection() {
+        if let id = selection, filtered.contains(where: { $0.id == id }) { return }
+        selection = filtered.first?.id
+    }
+
     // MARK: - Derived
 
-    var filtered: [ReviewItem] {
+    private func matches(_ item: ReviewItem, _ filter: Filter) -> Bool {
         switch filter {
-        case .pending:  return items.filter { !$0.isResolved && $0.decision == .undecided }
-        case .discard:  return items.filter { !$0.isResolved && $0.decision == .discard }
-        case .keep:     return items.filter { !$0.isResolved && $0.decision == .keep }
-        case .failed:   return items.filter { $0.failureReason != nil }
-        case .resolved: return items.filter(\.isResolved)
-        case .all:      return items
+        case .pending:  return !item.isResolved && item.decision == .undecided
+        case .discard:  return !item.isResolved && item.decision == .discard
+        case .keep:     return !item.isResolved && item.decision == .keep
+        case .failed:   return item.failureReason != nil
+        case .resolved: return item.isResolved
+        case .all:      return true
+        }
+    }
+
+    private func matchesMedia(_ item: ReviewItem) -> Bool {
+        switch mediaFilter {
+        case .all:    return true
+        case .photos: return !item.isVideo
+        case .videos: return item.isVideo
+        }
+    }
+
+    var filtered: [ReviewItem] {
+        items.filter { matches($0, filter) && matchesMedia($0) }
+    }
+
+    /// True when the loaded set holds both kinds. The media control is hidden
+    /// otherwise: offering "Videos (0)" on a folder of stills is a dead end
+    /// that only invites someone to filter everything away.
+    var isMixedMedia: Bool {
+        var photo = false, video = false
+        for item in items {
+            if item.isVideo { video = true } else { photo = true }
+            if photo && video { return true }
+        }
+        return false
+    }
+
+    func mediaCount(for media: MediaFilter) -> Int {
+        switch media {
+        case .all:    return items.count
+        case .photos: return items.filter { !$0.isVideo }.count
+        case .videos: return items.filter(\.isVideo).count
         }
     }
 
     /// Computed without touching `filter` — mutating published state while a
     /// view body is being evaluated causes update loops.
+    ///
+    /// Counted through the media filter as well, so the menu never promises
+    /// "To review (35)" and then shows four rows because Videos is selected.
     func count(for filter: Filter) -> Int {
-        switch filter {
-        case .pending:  return undecidedCount
-        case .discard:  return markedForDiscard.count
-        case .keep:     return markedForKeep.count
-        case .failed:   return failedCount
-        case .resolved: return resolvedCount
-        case .all:      return items.count
-        }
+        items.filter { matches($0, filter) && matchesMedia($0) }.count
     }
 
     /// Puts failed items back in the queue so Apply can try them again — after

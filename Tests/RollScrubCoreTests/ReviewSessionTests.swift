@@ -62,6 +62,21 @@ final class ReviewSessionTests: XCTestCase {
         }
     }
 
+    /// A card dump: stills and clips duplicated in the same folder.
+    private func scanMixedFixture(photos: Int, videos: Int) throws -> ScanResult {
+        for index in 0..<photos {
+            let payload = String(repeating: "still\(index)", count: 40_000)
+            try write("Card/DSC0\(index).jpg", payload)
+            try write("Backup/DSC0\(index) 2.jpg", payload)
+        }
+        for index in 0..<videos {
+            let payload = String(repeating: "clip\(index)", count: 40_000)
+            try write("Card/C00\(index).mov", payload)
+            try write("Backup/C00\(index) 2.mov", payload)
+        }
+        return DuplicateScanner(config: ScanConfig(root: root)).scan()
+    }
+
     func testScanResultBecomesReviewablePairs() throws {
         let result = try scanFixture(count: 3)
         let session = ReviewSession()
@@ -365,5 +380,89 @@ final class ReviewSessionTests: XCTestCase {
         XCTAssertEqual(second.markedForDiscard.count, 1)
         XCTAssertEqual(second.markedForKeep.count, 1)
         XCTAssertEqual(second.undecidedCount, 1)
+    }
+
+    // MARK: - Filtering by media type
+
+    func testMediaFilterNarrowsToPhotosOrVideos() throws {
+        let session = ReviewSession()
+        session.load(scanResult: try scanMixedFixture(photos: 3, videos: 2), root: root)
+        session.filter = .all
+
+        XCTAssertEqual(session.filtered.count, 5)
+
+        session.mediaFilter = .photos
+        XCTAssertEqual(session.filtered.count, 3)
+        XCTAssertTrue(session.filtered.allSatisfy { !$0.isVideo })
+
+        session.mediaFilter = .videos
+        XCTAssertEqual(session.filtered.count, 2)
+        XCTAssertTrue(session.filtered.allSatisfy(\.isVideo))
+    }
+
+    /// The two axes are independent, which is the whole reason the media
+    /// filter is not just another case of Filter: "videos still to review"
+    /// has to be expressible.
+    func testMediaFilterCombinesWithTheStatusFilter() throws {
+        let session = ReviewSession()
+        session.load(scanResult: try scanMixedFixture(photos: 2, videos: 2), root: root)
+
+        let firstVideo = try XCTUnwrap(session.items.first(where: \.isVideo))
+        session.mark(firstVideo.id, as: .discard)
+
+        session.mediaFilter = .videos
+        session.filter = .pending
+        XCTAssertEqual(session.filtered.count, 1, "one video still awaits a verdict")
+
+        session.filter = .discard
+        XCTAssertEqual(session.filtered.map(\.id), [firstVideo.id])
+
+        session.mediaFilter = .photos
+        XCTAssertTrue(session.filtered.isEmpty, "no photo was marked for removal")
+    }
+
+    /// The menu labels are counted through the media filter too, so it can
+    /// never offer "To review (4)" and then show one row.
+    func testStatusCountsRespectTheMediaFilter() throws {
+        let session = ReviewSession()
+        session.load(scanResult: try scanMixedFixture(photos: 3, videos: 1), root: root)
+
+        XCTAssertEqual(session.count(for: .pending), 4)
+        session.mediaFilter = .videos
+        XCTAssertEqual(session.count(for: .pending), 1)
+        XCTAssertEqual(session.count(for: .all), 1)
+    }
+
+    func testTheMediaControlIsHiddenForStillsAlone() throws {
+        let session = ReviewSession()
+        session.load(scanResult: try scanFixture(count: 2), root: root)
+        XCTAssertFalse(session.isMixedMedia, "a folder of stills needs no media filter")
+    }
+
+    // Separate from the stills-only case on purpose: both fixtures write into
+    // the same root, so scanning after the other had run counted its files too.
+    func testTheMediaControlAppearsForAMixedSet() throws {
+        let session = ReviewSession()
+        session.load(scanResult: try scanMixedFixture(photos: 1, videos: 1), root: root)
+        XCTAssertTrue(session.isMixedMedia)
+        XCTAssertEqual(session.mediaCount(for: .photos), 1)
+        XCTAssertEqual(session.mediaCount(for: .videos), 1)
+        XCTAssertEqual(session.mediaCount(for: .all), 2)
+    }
+
+    /// Filtering away the selected row must not leave the detail pane showing
+    /// a file that is no longer in the list beside it.
+    func testSelectionMovesWhenTheFilterHidesIt() throws {
+        let session = ReviewSession()
+        session.load(scanResult: try scanMixedFixture(photos: 2, videos: 2), root: root)
+
+        let photo = try XCTUnwrap(session.items.first(where: { !$0.isVideo }))
+        session.selection = photo.id
+
+        session.mediaFilter = .videos
+        session.reconcileSelection()
+
+        let selected = try XCTUnwrap(session.item(id: session.selection))
+        XCTAssertTrue(selected.isVideo, "selection followed the filter")
     }
 }

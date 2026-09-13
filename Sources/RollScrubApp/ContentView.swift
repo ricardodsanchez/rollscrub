@@ -53,6 +53,8 @@ struct ContentView: View {
         .onChange(of: hasReview, initial: true) { _, review in
             columns = review ? .all : .detailOnly
         }
+        .onChange(of: session.mediaFilter) { _, _ in session.reconcileSelection() }
+        .onChange(of: session.filter) { _, _ in session.reconcileSelection() }
         .onReceive(NotificationCenter.default.publisher(for: .scanFolders)) { _ in
             guard !scanner.isScanning else { return }
             chooseFolderToScan()
@@ -107,7 +109,30 @@ struct ContentView: View {
             }
             .pickerStyle(.menu)
             .labelsHidden()
-            .padding(8)
+            .padding(.horizontal, 8)
+            .padding(.top, 8)
+
+            // Only for a set that actually holds both. On a folder of stills a
+            // "Videos (0)" tab is a dead end, and on a card dump this is the
+            // control that makes the job tractable: clips are reviewed by
+            // watching them, stills at a glance, and mixing the two is what
+            // makes a long queue feel endless.
+            if session.isMixedMedia {
+                Picker("Media", selection: $session.mediaFilter) {
+                    ForEach(ReviewSession.MediaFilter.allCases) { media in
+                        Label(
+                            "\(media.rawValue)  (\(session.mediaCount(for: media)))",
+                            systemImage: media.symbol
+                        ).tag(media)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(.horizontal, 8)
+                .padding(.top, 6)
+            }
+
+            Spacer().frame(height: 8)
 
             // No explicit .tag(): List already keys selection off Identifiable,
             // and adding one on top makes AppKit re-enter its table delegate
