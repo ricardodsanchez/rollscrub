@@ -45,14 +45,52 @@ public enum KeepSelector {
         }
     }
 
+    /// Trailing markers that mean "copy of" only when removing them leaves the
+    /// name of another file in the same group.
+    ///
+    /// This is the relative counterpart to `looksLikeCopy`, and it can be far
+    /// more aggressive precisely because it is relative. A bare trailing `-2`
+    /// is an ordinary part of the rename convention — `20230924-LEICA
+    /// Q2-Seattle-8` is an original — so the absolute test above must never
+    /// look for it. But when `…-5802-2.DNG` sits in a group that also contains
+    /// `…-5802.DNG`, the longer name is that file's copy and nothing else.
+    static let derivedSuffixPattern =
+        #"[ _-]\(?\d{1,3}\)?$|[ _-]?cop(y|ie)([ _-]\d{1,3})?$"#
+
+    static func stem(ofPath path: String) -> String {
+        (((path as NSString).lastPathComponent) as NSString)
+            .deletingPathExtension
+            .lowercased()
+    }
+
+    /// True when `stem` is another group member's name plus a copy marker.
+    static func isDerived(_ stem: String, from others: Set<String>) -> Bool {
+        guard let marker = stem.range(
+            of: derivedSuffixPattern, options: [.regularExpression, .caseInsensitive])
+        else { return false }
+        let base = String(stem[stem.startIndex..<marker.lowerBound])
+        return !base.isEmpty && base != stem && others.contains(base)
+    }
+
     /// Returns the path to keep. `paths` must be non-empty.
     public static func chooseKeep(from paths: [String]) -> String {
-        paths.min { lhs, rhs in
+        let stems = Set(paths.map(stem(ofPath:)))
+
+        // "Is this a copy?" is asked two ways: of the name alone, and of the
+        // name against the rest of the group. Either answer disqualifies it,
+        // so a file whose name is just an original's with "-2" on the end
+        // stops winning the longest-name tiebreak below.
+        func isCopy(_ path: String) -> Bool {
+            looksLikeCopy(filename: (path as NSString).lastPathComponent)
+                || isDerived(stem(ofPath: path), from: stems)
+        }
+
+        return paths.min { lhs, rhs in
             let lhsName = (lhs as NSString).lastPathComponent
             let rhsName = (rhs as NSString).lastPathComponent
 
-            let lhsCopy = looksLikeCopy(filename: lhsName)
-            let rhsCopy = looksLikeCopy(filename: rhsName)
+            let lhsCopy = isCopy(lhs)
+            let rhsCopy = isCopy(rhs)
             if lhsCopy != rhsCopy { return !lhsCopy }
 
             let lhsRenamed = looksRenamed(filename: lhsName)

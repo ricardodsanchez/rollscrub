@@ -81,6 +81,58 @@ final class KeepSelectorTests: XCTestCase {
         let keep = KeepSelector.chooseKeep(from: ["/a/xx 2.jpg", "/a/x 3.jpg"])
         XCTAssertEqual(keep, "/a/xx 2.jpg")
     }
+
+    // MARK: - Copies named as a sibling plus a suffix
+
+    /// The real case this came from: both files carry the rename convention,
+    /// neither trips the absolute copy test, and the longest-name tiebreak was
+    /// therefore keeping the copy and marking the original for removal.
+    func testKeepsTheOriginalOverASiblingWithADashSuffix() {
+        let original = "/V/Photos/2026/07/20260704-iPhone 17 Pro-Seattle-5802.DNG"
+        let copy = "/V/Photos/2026/07/20260704-iPhone 17 Pro-Seattle-5802-2.DNG"
+
+        XCTAssertEqual(KeepSelector.chooseKeep(from: [copy, original]), original)
+        XCTAssertEqual(KeepSelector.chooseKeep(from: [original, copy]), original)
+    }
+
+    func testKeepsTheOriginalAcrossTheUsualCopySpellings() {
+        for copyName in [
+            "beach-2.jpg", "beach_2.jpg", "beach 2.jpg", "beach (2).jpg",
+            "beach copy.jpg", "beach copy 2.jpg", "beach-copy.jpg",
+        ] {
+            XCTAssertEqual(
+                KeepSelector.chooseKeep(from: ["/a/\(copyName)", "/a/beach.jpg"]),
+                "/a/beach.jpg",
+                "\(copyName) is a copy of beach.jpg")
+        }
+    }
+
+    /// The reason the suffix test has to be relative to the group. A trailing
+    /// number is part of the rename convention, so on its own it must not
+    /// condemn a file — only matching a sibling's name does.
+    func testATrailingNumberIsNotACopyMarkerOnItsOwn() {
+        let a = "/a/20230924-LEICA Q2-Seattle-8.DNG"
+        let b = "/a/L1020661.DNG"
+        XCTAssertEqual(KeepSelector.chooseKeep(from: [a, b]), a,
+                       "the renamed file wins; its trailing -8 is a sequence number")
+
+        let blankFields = "/a/20220718---2-38.MP4"
+        XCTAssertEqual(KeepSelector.chooseKeep(from: [blankFields, "/a/C0118.MP4"]), blankFields)
+    }
+
+    /// Copies of copies still leave the true original standing.
+    func testChainsOfCopiesStillKeepTheOriginal() {
+        let paths = ["/a/beach-2-2.jpg", "/a/beach-2.jpg", "/a/beach.jpg"]
+        XCTAssertEqual(KeepSelector.chooseKeep(from: paths), "/a/beach.jpg")
+    }
+
+    /// With no bare original present, nothing is derived and the existing
+    /// tiebreaks decide — the point being that it stays deterministic.
+    func testCopiesWithoutTheirOriginalFallBackToAStableChoice() {
+        let paths = ["/a/beach-3.jpg", "/a/beach-2.jpg"]
+        let once = KeepSelector.chooseKeep(from: paths)
+        XCTAssertEqual(once, KeepSelector.chooseKeep(from: paths.reversed()))
+    }
 }
 
 final class ReportWriterTests: XCTestCase {
