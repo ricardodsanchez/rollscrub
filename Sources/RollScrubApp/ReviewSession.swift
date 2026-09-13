@@ -464,16 +464,35 @@ final class ReviewSession: ObservableObject {
     /// Scans have no folder of their own to write to, so their progress lives
     /// in Application Support keyed by the scanned paths. Sorted first so the
     /// same set of folders keys the same file regardless of pick order.
-    private static func stateFileForScan(roots: [URL]) -> URL? {
-        let key = roots.map(\.path).sorted().joined(separator: "\n")
-        let digest = SHA256.hash(data: Data(key.utf8))
-            .prefix(8).map { String(format: "%02x", $0) }.joined()
+    /// Where per-scan decisions are remembered between launches.
+    ///
+    /// Injectable so a test run never writes into the real Application Support
+    /// directory. Decisions recorded against a fixture in a temp folder are not
+    /// the user's data, they are keyed to paths that stop existing the moment
+    /// the test ends, and they accumulate silently for as long as the suite is
+    /// ever run.
+    static var stateDirectoryOverride: URL?
+
+    private static func stateDirectory() -> URL? {
+        if let override = stateDirectoryOverride {
+            try? FileManager.default.createDirectory(
+                at: override, withIntermediateDirectories: true)
+            return override
+        }
         guard let support = try? FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask,
             appropriateFor: nil, create: true)
         else { return nil }
         let directory = support.appendingPathComponent("RollScrub", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    private static func stateFileForScan(roots: [URL]) -> URL? {
+        let key = roots.map(\.path).sorted().joined(separator: "\n")
+        let digest = SHA256.hash(data: Data(key.utf8))
+            .prefix(8).map { String(format: "%02x", $0) }.joined()
+        guard let directory = stateDirectory() else { return nil }
         return directory.appendingPathComponent("scan-\(digest).json")
     }
 

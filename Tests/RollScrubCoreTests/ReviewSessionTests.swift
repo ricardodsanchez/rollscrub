@@ -8,8 +8,10 @@ final class ReviewSessionTests: XCTestCase {
 
     private var root: URL!
     private var reviewDir: URL!
+    private var scratchState: URL?
 
     override func setUpWithError() throws {
+        scratchState = ScratchStateDirectory.begin()
         root = FileManager.default.temporaryDirectory
             .appendingPathComponent("RollScrubReview-\(UUID().uuidString)")
         reviewDir = root.appendingPathComponent(SkipRules.reviewDirectoryName)
@@ -17,6 +19,7 @@ final class ReviewSessionTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        ScratchStateDirectory.end(scratchState)
         try? FileManager.default.removeItem(at: root)
     }
 

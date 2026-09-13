@@ -10,6 +10,19 @@ import XCTest
 @MainActor
 final class LayoutSnapshotTests: XCTestCase {
 
+    private var scratchState: URL?
+
+    override func setUp() {
+        super.setUp()
+        scratchState = ScratchStateDirectory.begin()
+    }
+
+    override func tearDown() {
+        ScratchStateDirectory.end(scratchState)
+        super.tearDown()
+    }
+
+
     func testRenderComparisonView() async throws {
         guard let directory = ProcessInfo.processInfo.environment["ROLLSCRUB_SNAPSHOT_DIR"] else {
             throw XCTSkip("set ROLLSCRUB_SNAPSHOT_DIR to render snapshots")

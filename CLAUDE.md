@@ -75,6 +75,14 @@ git stash pop -q
 Stashing both the fix and its test runs zero tests and reports success. Check
 the failure count and the assertion message, not just the exit code.
 
+**A test run must leave no trace outside its own temp directory.** Anything
+that writes to Application Support, Preferences, or the Keychain needs its
+location injected — `ReviewSession.stateDirectoryOverride` is the pattern, and
+`ScratchStateDirectory` wires it into `setUp`/`tearDown`. This kind of mess is
+invisible, permanent and grows on every run, so it is caught by checking rather
+than by noticing: count the files in the target directory before and after a
+full `swift test`.
+
 Tests are named as sentences about behaviour
 (`testKeepsTheOriginalOverASiblingWithADashSuffix`), and each carries a comment
 saying what breaks in the real world if it fails. A test whose comment is just

@@ -10,6 +10,19 @@ import XCTest
 @MainActor
 final class ThumbnailLoaderTests: XCTestCase {
 
+    private var scratchState: URL?
+
+    override func setUp() {
+        super.setUp()
+        scratchState = ScratchStateDirectory.begin()
+    }
+
+    override func tearDown() {
+        ScratchStateDirectory.end(scratchState)
+        super.tearDown()
+    }
+
+
     private func manifestItems() throws -> [ReviewItem] {
         guard let path = ProcessInfo.processInfo.environment["ROLLSCRUB_MANIFEST"] else {
             throw XCTSkip("set ROLLSCRUB_MANIFEST to a real manifest")
