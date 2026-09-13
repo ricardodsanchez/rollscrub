@@ -61,7 +61,7 @@ Specific traps, each of which has already happened:
 
 ## Tests
 
-`swift test` — 69 tests, and they run in under a second. Keep it that way.
+`swift test` — 77 tests, and they run in under a second. Keep it that way.
 
 **Every bug fix needs a test that fails without the fix.** Prove it, don't
 assume it:
