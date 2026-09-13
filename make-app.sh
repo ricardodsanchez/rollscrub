@@ -141,6 +141,16 @@ if [ ! -w "$DEST" ]; then
   echo "note: /Applications not writable, installing to $DEST"
 fi
 
+# Never replace a copy someone is using. Deleting a running app's bundle pulls
+# the executable and its framework out from under it: it dies without a crash
+# report, which looks exactly like a bug in the app itself.
+if pgrep -f "$DEST/$APP_NAME/Contents/MacOS/RollScrub" >/dev/null 2>&1; then
+  echo "error: RollScrub is running from $DEST/$APP_NAME." >&2
+  echo "       Quit it first — replacing the bundle underneath a running app" >&2
+  echo "       kills it silently. Set FORCE_REPLACE=1 to override." >&2
+  [ "${FORCE_REPLACE:-0}" = "1" ] || exit 1
+fi
+
 rm -rf "${DEST:?}/$APP_NAME"
 cp -R "$STAGE" "$DEST/$APP_NAME"
 
