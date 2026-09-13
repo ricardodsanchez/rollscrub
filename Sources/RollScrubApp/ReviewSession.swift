@@ -243,18 +243,6 @@ final class ReviewSession: ObservableObject {
         items.filter { matches($0, filter) && matchesMedia($0) }
     }
 
-    /// True when the loaded set holds both kinds. The media control is hidden
-    /// otherwise: offering "Videos (0)" on a folder of stills is a dead end
-    /// that only invites someone to filter everything away.
-    var isMixedMedia: Bool {
-        var photo = false, video = false
-        for item in items {
-            if item.isVideo { video = true } else { photo = true }
-            if photo && video { return true }
-        }
-        return false
-    }
-
     func mediaCount(for media: MediaFilter) -> Int {
         switch media {
         case .all:    return items.count

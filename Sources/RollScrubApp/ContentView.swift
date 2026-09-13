@@ -112,25 +112,23 @@ struct ContentView: View {
             .padding(.horizontal, 8)
             .padding(.top, 8)
 
-            // Only for a set that actually holds both. On a folder of stills a
-            // "Videos (0)" tab is a dead end, and on a card dump this is the
-            // control that makes the job tractable: clips are reviewed by
-            // watching them, stills at a glance, and mixing the two is what
-            // makes a long queue feel endless.
-            if session.isMixedMedia {
-                Picker("Media", selection: $session.mediaFilter) {
-                    ForEach(ReviewSession.MediaFilter.allCases) { media in
-                        Label(
-                            "\(media.rawValue)  (\(session.mediaCount(for: media)))",
-                            systemImage: media.symbol
-                        ).tag(media)
-                    }
+            // Always shown, even when the queue is all stills. Hiding it for a
+            // uniform set spared a "Videos (0)" dead end but made the control
+            // undiscoverable: someone who knows the filter exists and cannot
+            // find it reasonably concludes it is broken. The counts make an
+            // empty segment explain itself, which a missing control cannot.
+            Picker("Media", selection: $session.mediaFilter) {
+                ForEach(ReviewSession.MediaFilter.allCases) { media in
+                    Label(
+                        "\(media.rawValue)  (\(session.mediaCount(for: media)))",
+                        systemImage: media.symbol
+                    ).tag(media)
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .padding(.horizontal, 8)
-                .padding(.top, 6)
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 8)
+            .padding(.top, 6)
 
             Spacer().frame(height: 8)
 
@@ -156,6 +154,48 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Empty filter
+
+    /// Two filters can empty the list, and saying "switch to To review" when
+    /// To review is already selected — because it was the media filter that
+    /// emptied it — sends someone hunting for a control that is not the
+    /// problem. Whichever filter is actually responsible is the one named.
+    private var mediaFilterIsResponsible: Bool {
+        session.mediaFilter != .all
+            && session.mediaCount(for: session.mediaFilter) == 0
+    }
+
+    private var emptyFilterTitle: String {
+        guard mediaFilterIsResponsible else { return "Nothing in this filter" }
+        return session.mediaFilter == .videos
+            ? "No duplicate videos"
+            : "No duplicate photos"
+    }
+
+    private var emptyFilterSymbol: String {
+        mediaFilterIsResponsible
+            ? session.mediaFilter.symbol
+            : "line.3.horizontal.decrease.circle"
+    }
+
+    private var emptyFilterMessage: String {
+        if mediaFilterIsResponsible {
+            let lookedFor = session.mediaFilter == .videos ? "videos" : "photos"
+            let found = session.mediaCount(for: .all)
+            let other = session.mediaFilter == .videos
+                ? (found == 1 ? "photo" : "photos")
+                : (found == 1 ? "video" : "videos")
+            return "This scan found no duplicate \(lookedFor) — only \(found) duplicate "
+                + "\(other). Choose All media to see them."
+        }
+        if session.undecidedCount == 0 {
+            return "Every pair has a decision. Press Apply to carry them out."
+        }
+        let n = session.undecidedCount
+        return "\(n) pair\(n == 1 ? "" : "s") still need\(n == 1 ? "s" : "") a decision — "
+            + "switch the filter to \"To review\"."
+    }
+
     // MARK: - Detail
 
     @ViewBuilder
@@ -173,12 +213,9 @@ struct ContentView: View {
             completionSummary
         } else if session.filtered.isEmpty {
             ContentUnavailableView {
-                Label("Nothing in this filter", systemImage: "line.3.horizontal.decrease.circle")
+                Label(emptyFilterTitle, systemImage: emptyFilterSymbol)
             } description: {
-                Text(session.undecidedCount == 0
-                     ? "Every pair has a decision. Press Apply to carry them out."
-                     : "\(session.undecidedCount) pair(s) still need a decision — "
-                       + "switch the filter to \"To review\".")
+                Text(emptyFilterMessage)
             }
         } else {
             Text("Select a pair").foregroundStyle(.secondary)

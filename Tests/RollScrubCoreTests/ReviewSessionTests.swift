@@ -433,18 +433,22 @@ final class ReviewSessionTests: XCTestCase {
         XCTAssertEqual(session.count(for: .all), 1)
     }
 
-    func testTheMediaControlIsHiddenForStillsAlone() throws {
+    /// A stills-only queue still reports its counts, because the control is
+    /// shown regardless: "Videos (0)" tells the truth, where a control that
+    /// vanishes is indistinguishable from one that is broken.
+    func testCountsAreReportedForAStillsOnlyQueue() throws {
         let session = ReviewSession()
         session.load(scanResult: try scanFixture(count: 2), root: root)
-        XCTAssertFalse(session.isMixedMedia, "a folder of stills needs no media filter")
+        XCTAssertEqual(session.mediaCount(for: .photos), 2)
+        XCTAssertEqual(session.mediaCount(for: .videos), 0)
+        XCTAssertEqual(session.mediaCount(for: .all), 2)
     }
 
     // Separate from the stills-only case on purpose: both fixtures write into
     // the same root, so scanning after the other had run counted its files too.
-    func testTheMediaControlAppearsForAMixedSet() throws {
+    func testCountsAreReportedForAMixedQueue() throws {
         let session = ReviewSession()
         session.load(scanResult: try scanMixedFixture(photos: 1, videos: 1), root: root)
-        XCTAssertTrue(session.isMixedMedia)
         XCTAssertEqual(session.mediaCount(for: .photos), 1)
         XCTAssertEqual(session.mediaCount(for: .videos), 1)
         XCTAssertEqual(session.mediaCount(for: .all), 2)
