@@ -1,0 +1,194 @@
+/* Shared by the plain document pages — privacy, terms, changelog.
+ *
+ * The tokens below are a copy of the ones inlined at the top of index.html.
+ * index.html is deliberately a single self-contained file, so the palette
+ * lives in two places; change one and change the other. Everything past the
+ * token blocks is specific to long-form text and has no counterpart there. */
+
+:root {
+  --ground: #F1F0EC;
+  --surface: #FFFFFF;
+  --frame: #DCD9D2;
+  --text: #1B1917;
+  --text-dim: #6A635B;
+  --text-faint: #928B82;
+  --accent: #C45A16;
+  --strip: #201D1A;
+  --strip-text: #EDEAE4;
+
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --measure: 66ch;
+  --edge: clamp(20px, 5vw, 64px);
+}
+
+:root:not([data-theme="light"]) {
+  @media (prefers-color-scheme: dark) {
+    --ground: #131110;
+    --surface: #1C1917;
+    --frame: #302B27;
+    --text: #EFEBE5;
+    --text-dim: #A79E95;
+    --text-faint: #7C736B;
+    --accent: #E8833A;
+    --strip: #0B0A09;
+    --strip-text: #EFEBE5;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #131110;
+  --surface: #1C1917;
+  --frame: #302B27;
+  --text: #EFEBE5;
+  --text-dim: #A79E95;
+  --text-faint: #7C736B;
+  --accent: #E8833A;
+  --strip: #0B0A09;
+  --strip-text: #EFEBE5;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--text);
+  font: 16px/1.65 var(--body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 0 var(--edge);
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px var(--edge);
+  border-bottom: 1px solid var(--frame);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--display);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.nav a { color: var(--text-dim); text-decoration: none; font-size: 14px; }
+.nav a:hover { color: var(--accent); }
+
+main { padding: clamp(40px, 7vw, 80px) 0 64px; }
+
+h1 {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: clamp(30px, 5vw, 42px);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  margin: 0 0 8px;
+}
+
+.updated {
+  color: var(--text-faint);
+  font-size: 14px;
+  margin: 0 0 40px;
+}
+
+h2 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+  margin: 44px 0 12px;
+}
+
+h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 28px 0 6px;
+}
+
+p, li { color: var(--text-dim); }
+p { margin: 0 0 14px; }
+ul { margin: 0 0 14px; padding-left: 20px; }
+li { margin: 0 0 7px; }
+strong { color: var(--text); font-weight: 500; }
+
+a { color: var(--accent); }
+
+code {
+  font-family: var(--mono);
+  font-size: 13px;
+  background: var(--surface);
+  border: 1px solid var(--frame);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* Release entries: the version is the anchor, so it reads as a list of
+ * releases rather than a wall of prose. */
+.release {
+  border-top: 1px solid var(--frame);
+  padding: 28px 0 4px;
+}
+.release-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.version {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.date { color: var(--text-faint); font-size: 14px; }
+.tag {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
+footer {
+  background: var(--strip);
+  color: var(--strip-text);
+  margin-top: 72px;
+  padding: 28px 0;
+}
+footer .wrap {
+  max-width: 1100px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 28px;
+  justify-content: space-between;
+  font-size: 14px;
+}
+footer a { color: var(--strip-text); text-decoration: none; opacity: 0.75; }
+footer a:hover { opacity: 1; color: var(--accent); }
+.foot-links { display: flex; flex-wrap: wrap; gap: 20px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Changelog — RollScrub</title>
+<meta name="description" content="Every RollScrub release, what changed in it, and when.">
+<link rel="canonical" href="https://rollscrub.com/changelog.html">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'><rect x='1' y='4' width='20' height='14' fill='none' stroke='%23E8833A' stroke-width='2'/><rect x='12' y='7' width='6' height='8' fill='%23E8833A'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<link rel="stylesheet" href="/page.css">
+</head>
+<body>
+
+<nav class="nav">
+  <a class="brand" href="/">
+    <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+      <rect x="0.75" y="3.75" width="20.5" height="14.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <rect x="4" y="7" width="6" height="8" fill="currentColor" opacity="0.35"/>
+      <rect x="12" y="7" width="6" height="8" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+    </svg>
+    RollScrub
+  </a>
+  <a href="/">← Back to RollScrub</a>
+</nav>
+
+<main>
+<div class="wrap">
+
+<h1>Changelog</h1>
+<p class="updated">RollScrub updates itself, with your confirmation. Every
+release is listed here, including what it fixes.</p>
+
+<div class="release">
+  <div class="release-head">
+    <span class="version">1.0</span>
+    <span class="date">13 September 2026</span>
+    <span class="tag">Current</span>
+  </div>
+
+  <p>First release.</p>
+
+  <ul>
+    <li>Finds duplicate photos and videos by comparing them <strong>byte for
+        byte</strong> — never by filename, date or visual similarity, so a
+        match is proven rather than guessed.</li>
+    <li>Scans <strong>several folders and drives at once</strong>, finding
+        duplicates across all of them rather than within each separately.</li>
+    <li>Side-by-side review of every pair before anything moves, with both
+        files' paths, sizes and capture dates.</li>
+    <li>Duplicates go to the <strong>Trash</strong>, never erased, and each is
+        re-verified against the copy being kept immediately before it moves.</li>
+    <li>Photos, Lightroom, Aperture and Final Cut libraries are skipped
+        entirely — their internal copies are meant to be identical to files
+        elsewhere, and removing one damages the catalogue.</li>
+    <li>Files kept in iCloud but not downloaded to this Mac are counted and
+        skipped, rather than silently pulled down over the network.</li>
+    <li>Text and CSV reports of everything found.</li>
+    <li>A command-line tool for scripted sweeps, with a manifest and a single
+        <code>--undo</code> that puts every moved file back where it was.</li>
+    <li>Universal binary for Apple Silicon and Intel, signed and notarized by
+        Apple. Requires macOS 14 or later.</li>
+  </ul>
+</div>
+
+</div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>© 2026 Ricardo Sanchez · Made in Seattle</div>
+    <div class="foot-links">
+      <a href="/">Home</a>
+      <a href="/changelog.html">Changelog</a>
+      <a href="/privacy.html">Privacy</a>
+      <a href="/terms.html">Terms</a>
+      <a href="mailto:support@rollscrub.com">Support</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
