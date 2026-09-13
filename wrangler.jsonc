@@ -1,18 +1,34 @@
 {
-  // Static-assets-only Worker: no `main` script, so Cloudflare serves site/
-  // directly. site/ is the domain root, which is what puts the appcast at
-  // https://rollscrub.com/appcast.xml — the exact URL compiled into every
-  // shipped copy of the app.
-  "name": "rollscrub",
-  "compatibility_date": "2026-09-12",
-
-  // rollscrub.com is the only way in. Left on, workers.dev and per-version
-  // preview URLs would publish the paid installer and the whole site at
-  // guessable hostnames, and serve identical content from several domains.
-  "workers_dev": false,
-  "preview_urls": false,
-
-  "assets": {
-    "directory": "./site"
-  }
+	// site/ is the domain root, which is what puts the appcast at
+	// https://rollscrub.com/appcast.xml — the exact URL compiled into every
+	// shipped copy of the app.
+	//
+	// The Worker in front of it exists only to count downloads and update
+	// checks. ASSETS still serves every byte, so caching, range requests and
+	// content types behave exactly as they did when assets were served direct.
+	"name": "rollscrub",
+	"main": "worker/index.js",
+	"compatibility_date": "2026-09-12",
+	// rollscrub.com is the only way in. Left on, workers.dev and per-version
+	// preview URLs would publish the paid installer and the whole site at
+	// guessable hostnames, and serve identical content from several domains.
+	"workers_dev": false,
+	"preview_urls": false,
+	"assets": {
+		"directory": "./site",
+		// Named so the Worker can hand requests back to the asset handler.
+		"binding": "ASSETS",
+		// Without this the asset handler answers first for anything that
+		// exists in site/ — including the zip and the appcast — and the
+		// Worker never runs for the two paths it exists to count.
+		"run_worker_first": true
+	},
+	"d1_databases": [
+		{
+			"binding": "STATS",
+			"database_name": "rollscrub-stats",
+			"database_id": "e799d545-da4a-4b2c-b55d-dc9e1e1bb5a6",
+			"remote": true
+		}
+	]
 }
