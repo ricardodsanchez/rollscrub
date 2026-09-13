@@ -89,19 +89,45 @@ failed *because* its pattern matched, a `.standardized` that silently skipped
 every file behind a symlink, a dark-mode selector that made the download button
 invisible.
 
-**Before anything reaches a release, have a different model read it.**
+**Before anything reaches a release, have a different model read it.** Do this
+without being asked — it is a standing instruction, not an offer to make.
 
-- `/code-review ultra` runs a multi-agent cloud review of the branch. It is
-  user-triggered and billed — Claude cannot launch it. Ask for it.
-- Otherwise spawn a reviewer with an explicit `model` override different from
-  the one that wrote the change, and give it the diff plus the safety rules
-  above. Ask specifically: what does this do to files the user cannot get back,
-  and what does it cost on a 200,000-file tree?
-- Treat the reviewer as fallible too. Verify its claims against the code before
-  acting; a confident wrong review is worse than none.
+Spawn reviewers with the `Agent` tool, passing an explicit `model` that is
+**not** the model that wrote the change. Available: `opus`, `sonnet`, `fable`,
+`haiku`. Use two reviewers on different models for anything that can destroy
+data; one is enough for copy, site and build-script changes.
 
-Anything touching data destruction, licensing, signing or notarization gets a
-second model without exception.
+Give each reviewer the diff and the constraints it is judging against —
+a reviewer that has to guess the rules invents them:
+
+```
+Review this diff against RollScrub, a macOS duplicate-photo finder.
+Read CLAUDE.md first for the invariants; they are not negotiable.
+
+<diff>
+
+Answer three questions, with file:line evidence for each claim:
+1. Can this cause a file the user cannot get back to be deleted, moved
+   off its volume, moved without a fresh byte-for-byte verification, or
+   moved out of a managed photo library? Trace the actual code path.
+2. What does this cost on a 200,000-file tree, most of it not media and
+   much of it evicted to iCloud? Name any per-item filesystem or network
+   call and say how many times it runs.
+3. Where is it wrong in a way the tests would not catch? The fixtures are
+   tiny and synthetic.
+
+Do not summarise what the diff does — I wrote it. Report only defects,
+ranked by what they cost the user. "No defects found" is a valid answer.
+```
+
+Then **verify every finding against the code before acting on it.** Reviewers
+confabulate, especially about code they have only seen as a diff; a confident
+wrong review that sends you rewriting correct code is worse than no review. If
+a finding survives checking, fix it and say so. If it does not, say that too,
+with the evidence — do not quietly discard it.
+
+Anything touching data destruction, licensing, signing or notarization gets two
+models without exception.
 
 ## Release
 
