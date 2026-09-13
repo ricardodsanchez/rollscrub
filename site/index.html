@@ -44,6 +44,11 @@
        same values the app paints in the Dock. Everything on this page that is
        meant to read as "a photograph" uses them, so the site and the icon are
        visibly the same object. */
+    --lead-bg: #1A1C1D;
+    --lead-text: #F2F3F3;
+    --lead-dim: #ACB1B6;
+    --lead-edge: #1A1C1D;
+
     --sky: #566876;
     --hill: #303C3C;
     --paper: #EDEAE4;
@@ -74,6 +79,10 @@
       --strip: #0D0E0F;
       --strip-text: #ECEDEE;
       --strip-dim: #7D8287;
+      --lead-bg: #1F2325;
+      --lead-text: #F2F3F3;
+      --lead-dim: #A6ABB0;
+      --lead-edge: #E8833A;
     }
   }
 
@@ -93,6 +102,10 @@
     --strip: #0D0E0F;
     --strip-text: #ECEDEE;
     --strip-dim: #7D8287;
+    --lead-bg: #1F2325;
+    --lead-text: #F2F3F3;
+    --lead-dim: #A6ABB0;
+    --lead-edge: #E8833A;
   }
 
   * { box-sizing: border-box; }
@@ -408,7 +421,29 @@
   /* pricing */
   .price-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 1px; background: var(--frame); border: 1px solid var(--frame); }
   .price { background: var(--surface); padding: 30px 26px; display: flex; flex-direction: column; gap: 14px; }
-  .price.lead { background: var(--accent-soft); }
+  /* The paid card is the app's own combination: amber on charcoal, exactly
+     as the icon paints it. A 10% wash of the accent over the page instead
+     landed on muddy beige in light and brown in dark, and read as a tinted
+     template panel rather than as the thing being sold. */
+  .price.lead {
+    background: var(--lead-bg);
+    color: var(--lead-text);
+    box-shadow: inset 0 0 0 1px var(--lead-edge);
+  }
+  .price.lead h3,
+  .price.lead .amount { color: var(--lead-text); }
+  .price.lead ul,
+  .price.lead .amount span,
+  .price.lead .guarantee { color: var(--lead-dim); }
+  .price.lead li::before { color: var(--sun); }
+
+  /* On the dark card the accent is the brighter amber in both themes: the
+     light theme's deeper orange is tuned for contrast against paper. */
+  .price.lead .btn {
+    background: var(--sun);
+    border-color: var(--sun);
+    color: #17120D;
+  }
   .price h3 { font-size: 19px; }
   .amount { font-family: var(--display); font-weight: 800; font-size: 42px; letter-spacing: -0.03em; line-height: 1; }
   .amount span { font-family: var(--mono); font-size: 12px; font-weight: 400; letter-spacing: 0; color: var(--text-faint); margin-left: 8px; }
