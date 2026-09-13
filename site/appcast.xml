@@ -4,11 +4,11 @@
         <title>RollScrub</title>
         <item>
             <title>1.0</title>
-            <pubDate>Sun, 13 Sep 2026 00:56:36 -0700</pubDate>
+            <pubDate>Sun, 13 Sep 2026 01:11:44 -0700</pubDate>
             <sparkle:version>1</sparkle:version>
             <sparkle:shortVersionString>1.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://rollscrub.com/releases/RollScrub-1.0.zip" length="2128212" type="application/octet-stream" sparkle:edSignature="lENmQCOhLpBv4O5xLyD94lRPgoWY9lEzi7SlBWQiP37cT1K9KEH+eddR0OUzaMxN2XgMdXANHJ9M7iDnVwY8AQ=="/>
+            <enclosure url="https://rollscrub.com/releases/RollScrub-1.0.zip" length="2132396" type="application/octet-stream" sparkle:edSignature="hglKSCdA/k44E/6rYzb6g9irLtgBXvop+PcXQH+W5AqqfykSurJACbJDSxDW6JKgbM3EjijPkMZkGlDd4dloBA=="/>
         </item>
     </channel>
 </rss>
