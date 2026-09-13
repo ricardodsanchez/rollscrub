@@ -88,6 +88,8 @@ body {
   text-decoration: none;
 }
 
+.mark { display: block; flex: none; }
+
 .nav a { color: var(--text-dim); text-decoration: none; font-size: 14px; }
 .nav a:hover { color: var(--accent); }
 

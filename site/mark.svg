@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="RollScrub">
+  <!-- A miniature of the app icon: the duplicate behind, dimmed, and the copy
+       being kept in front. Colours are the icon's own and do not follow the
+       page theme — a brand mark that changes colour between light and dark
+       stops being the thing people recognise in the Dock. -->
+  <title>RollScrub</title>
+
+  <!-- The duplicate, sitting behind. -->
+  <rect x="3.5" y="5.5" width="17" height="13" rx="2.5"
+        fill="#2E2A26" stroke="#4A443C" stroke-width="1"/>
+
+  <!-- The frame that stays: cream border, as on the icon. -->
+  <g>
+    <rect x="10.5" y="12.5" width="18" height="14" rx="2.5"
+          fill="#EDEAE4"/>
+    <!-- Sky. -->
+    <path d="M12.5 15.5h14v8.5a1 1 0 0 1-1 1h-12a1 1 0 0 1-1-1z"
+          fill="#566876"/>
+    <!-- Hills, clipped to the photograph's rounded corners. -->
+    <path d="M12.5 22.2l3.4-3.1 2.6 2.3 3.1-2.9 4.9 4.4v1.1a1 1 0 0 1-1 1h-12a1 1 0 0 1-1-1z"
+          fill="#303C3C"/>
+    <!-- The sun, in the icon's amber. -->
+    <circle cx="23.3" cy="18.1" r="1.9" fill="#E8833A"/>
+  </g>
+</svg>

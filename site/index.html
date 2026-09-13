@@ -10,7 +10,7 @@
 <meta property="og:title" content="RollScrub — proven duplicates, not guessed">
 <meta property="og:description" content="Find duplicate photos and videos across every folder and drive. Every match compared byte for byte. Nothing moves until you say so.">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'><rect x='1' y='4' width='20' height='14' fill='none' stroke='%23E8833A' stroke-width='2'/><rect x='12' y='7' width='6' height='8' fill='%23E8833A'/></svg>">
+<link rel="icon" href="/mark.svg" type="image/svg+xml">
 <style>
   /* Standalone reset: the hosted-artifact wrapper supplied these. */
   html { color-scheme: light dark; }
@@ -38,6 +38,16 @@
     --strip: #201D1A;
     --strip-text: #EDEAE4;
     --strip-dim: #9A928A;
+
+    /* The app icon's own colours, lifted from icon/make-icon.py. These do not
+       change between themes: they are the photograph inside the mark, and the
+       same values the app paints in the Dock. Everything on this page that is
+       meant to read as "a photograph" uses them, so the site and the icon are
+       visibly the same object. */
+    --sky: #566876;
+    --hill: #303C3C;
+    --paper: #EDEAE4;
+    --sun: #E8833A;
 
     --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
     --body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
@@ -144,6 +154,10 @@
     font-size: 17px;
     letter-spacing: -0.02em;
   }
+
+  /* The brand mark is a raster-free miniature of the app icon; block display
+     keeps it off the text baseline so the wordmark sits level with it. */
+  .mark { display: block; flex: none; }
 
   .nav-links {
     display: flex;
@@ -272,12 +286,37 @@
     min-height: 132px;
   }
 
-  /* Stand-in for the photograph: a flat tonal field, not a fake image. */
+  /* The photograph, drawn the way the app icon draws it: a horizon with a low
+     sun. Not a fake image and not a stock photo — the same two shapes the mark
+     uses, so the contact sheet and the icon are recognisably one product.
+     --plate tints the sky so the four frames read as different exposures. */
   .plate {
+    position: relative;
     flex: 1;
+    overflow: hidden;
     background:
-      linear-gradient(160deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.02) 55%),
-      var(--plate, #4A443C);
+      linear-gradient(170deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.01) 60%),
+      var(--plate, var(--sky));
+  }
+
+  /* The horizon: one clipped wedge, no extra markup per frame. */
+  .plate::after {
+    content: "";
+    position: absolute;
+    inset: 46% 0 0;
+    background: var(--hill);
+    clip-path: polygon(0 62%, 26% 18%, 46% 46%, 70% 6%, 100% 54%, 100% 100%, 0 100%);
+  }
+
+  .plate::before {
+    content: "";
+    position: absolute;
+    top: 22%;
+    right: 15%;
+    width: 13%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: var(--sun);
   }
 
   .frame-id {
@@ -520,11 +559,7 @@
 <div class="wrap">
   <nav class="nav">
     <div class="brand">
-      <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
-        <rect x="0.75" y="3.75" width="20.5" height="14.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
-        <rect x="4" y="7" width="6" height="8" fill="currentColor" opacity="0.35"/>
-        <rect x="12" y="7" width="6" height="8" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
-      </svg>
+      <img class="mark" src="/mark.svg" width="22" height="22" alt="" aria-hidden="true">
       RollScrub
     </div>
     <div class="nav-links">
@@ -883,9 +918,9 @@
       <a href="#how">How it works</a>
       <a href="#safety">Safety</a>
       <a href="#pricing">Pricing</a>
-      <a href="/changelog.html">Changelog</a>
-      <a href="/privacy.html">Privacy</a>
-      <a href="/terms.html">Terms</a>
+      <a href="/changelog">Changelog</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
       <a href="mailto:support@rollscrub.com">Support</a>
     </div>
   </div>
