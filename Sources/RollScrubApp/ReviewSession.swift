@@ -149,6 +149,7 @@ final class ReviewSession: ObservableObject {
         applySavedDecisions()
         isLoaded = true
         errorMessage = nil
+        resetFilters()
         resetSelection()
     }
 
@@ -182,6 +183,7 @@ final class ReviewSession: ObservableObject {
             applySavedDecisions()
             isLoaded = true
             errorMessage = nil
+            resetFilters()
             resetSelection()
         } catch {
             errorMessage = "Could not read that manifest: \(error.localizedDescription)"
@@ -203,6 +205,14 @@ final class ReviewSession: ObservableObject {
             return
         }
         load(manifestURL: newest)
+    }
+
+    /// A filter describes the queue it was set on. Carrying one across a scan
+    /// means pointing RollScrub at a new folder and being shown an empty list
+    /// — which reads as "found nothing", not as "still filtered to videos".
+    private func resetFilters() {
+        filter = .pending
+        mediaFilter = .all
     }
 
     private func resetSelection() {

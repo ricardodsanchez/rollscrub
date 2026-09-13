@@ -469,4 +469,36 @@ final class ReviewSessionTests: XCTestCase {
         let selected = try XCTUnwrap(session.item(id: session.selection))
         XCTAssertTrue(selected.isVideo, "selection followed the filter")
     }
+
+    /// Scan a mixed folder, filter to videos, then scan somewhere else: the
+    /// new queue must not arrive pre-filtered. An empty list on a fresh scan
+    /// reads as "found nothing", which is a far worse lie than a stale filter.
+    func testANewScanClearsTheFiltersFromTheLastOne() throws {
+        let session = ReviewSession()
+        session.load(scanResult: try scanMixedFixture(photos: 1, videos: 1), root: root)
+
+        session.mediaFilter = .videos
+        session.filter = .all
+        XCTAssertEqual(session.filtered.count, 1)
+
+        // A different folder, so the second scan cannot see the first's files.
+        let second = root.appendingPathComponent("SecondScan")
+        try FileManager.default.createDirectory(at: second, withIntermediateDirectories: true)
+        for index in 0..<3 {
+            let payload = String(repeating: "second\(index)", count: 40_000)
+            let a = second.appendingPathComponent("Shots/IMG_\(index).jpg")
+            let b = second.appendingPathComponent("Dupes/IMG_\(index) 2.jpg")
+            for url in [a, b] {
+                try FileManager.default.createDirectory(
+                    at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try Data(payload.utf8).write(to: url)
+            }
+        }
+        session.load(scanResult: DuplicateScanner(config: ScanConfig(root: second)).scan(),
+                     root: second)
+
+        XCTAssertEqual(session.mediaFilter, .all, "the media filter belonged to the old queue")
+        XCTAssertEqual(session.filter, .pending, "a fresh scan starts at To review")
+        XCTAssertEqual(session.filtered.count, 3, "the new scan's pairs are all visible")
+    }
 }
