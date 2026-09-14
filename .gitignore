@@ -11,3 +11,6 @@ rollscrub_report.csv
 /releases/
 private_keys/
 *.p8
+
+# Wrangler local state and logs
+.wrangler/
