@@ -447,6 +447,15 @@
   .price h3 { font-size: 19px; }
   .amount { font-family: var(--display); font-weight: 800; font-size: 42px; letter-spacing: -0.03em; line-height: 1; }
   .amount span { font-family: var(--mono); font-size: 12px; font-weight: 400; letter-spacing: 0; color: var(--text-faint); margin-left: 8px; }
+  /* The list price, kept visible beside the early one so the discount is a
+     real number rather than an adjective. */
+  .amount .was { font-family: var(--display); font-size: 26px; font-weight: 800;
+                 letter-spacing: -0.03em; margin: 0 10px 0 0; text-decoration: line-through;
+                 text-decoration-thickness: 2px; opacity: .45; }
+  .price.lead .amount .was { color: var(--lead-dim); opacity: .6; }
+  .early { font-size: 13.5px; line-height: 1.5; margin: 0; }
+  .price.lead .early { color: var(--lead-text); }
+  .early b { font-weight: 700; }
   .price ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14.5px; color: var(--text-dim); }
   /* The dash is positioned, not a flex sibling: as a flex container every
      inline span inside a line ("--move", "--undo") became its own flex item
@@ -820,7 +829,7 @@
 
       <div class="price lead">
         <h3>RollScrub Pro</h3>
-        <div class="amount">$25<span>one time</span></div>
+        <div class="amount"><span class="was">$25</span>$19<span>one time</span></div>
         <ul>
           <li>Everything in Free</li>
           <li>Move duplicates to the Trash in bulk</li>
@@ -830,11 +839,13 @@
         </ul>
         <form class="notify" action="/notify" method="post">
           <p class="soon"><span class="dot"></span> The shop opens in a few days — payment processing is still being approved.</p>
+          <p class="early">Leave your address and the email that tells you it&rsquo;s open carries
+            <b>$19 instead of $25</b> &mdash; the early price, for the first month after launch.</p>
           <label class="visually-hidden" for="notify-email">Your email address</label>
           <div class="notify-row">
             <input id="notify-email" name="email" type="email" required
                    autocomplete="email" placeholder="you@example.com" spellcheck="false">
-            <button class="btn" type="submit">Email me when it opens</button>
+            <button class="btn" type="submit">Email me the early price</button>
           </div>
           <!-- Seen by bots, not by people. -->
           <input class="visually-hidden" type="text" name="company" tabindex="-1" autocomplete="off" aria-hidden="true">
@@ -903,7 +914,7 @@
 
 <footer>
   <div class="wrap foot">
-    <div>© 2026 Ricardo Sanchez · Made in Seattle</div>
+    <div>© 2026 <a href="https://rcrdo.com" rel="me">Ricardo Sanchez</a> · Made in Seattle</div>
     <div class="foot-links">
       <a href="#how">How it works</a>
       <a href="#safety">Safety</a>
