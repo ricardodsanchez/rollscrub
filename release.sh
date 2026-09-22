@@ -58,9 +58,32 @@ ditto -c -k --keepParent "$APP" "$ARCHIVE"
 echo "==> regenerating appcast"
 "$APPCAST_TOOL" --download-url-prefix "$DOWNLOAD_PREFIX" -o "$APPCAST" "$RELEASES"
 
+# The download buttons name the file, and nothing else in this script touches
+# them. A release that leaves them alone puts the *previous* build on the
+# homepage — which is how somebody downloads a copy that cannot talk to the
+# current licence server, pays, and is told their key does not exist. Only
+# site/*.html: appcast.xml legitimately lists every past version, and
+# rewriting it would break the update path for everyone not on the newest.
+echo "==> pointing the site's download links at $VERSION"
+for page in "$SITE"/*.html; do
+  [ -e "$page" ] || continue
+  /usr/bin/sed -i '' -E \
+    "s|/releases/RollScrub-[0-9]+(\.[0-9]+)*\.zip|/releases/RollScrub-$VERSION.zip|g" "$page"
+done
+
+# Checked, not assumed. A link left pointing at an older build looks identical
+# on the page and surfaces only as a customer who cannot activate. The
+# `|| true` matters: grep exits non-zero when it finds nothing, which under
+# `set -e` would kill the script precisely when everything is correct.
+STALE="$(grep -rhoE "/releases/RollScrub-[0-9]+(\.[0-9]+)*\.zip" "$SITE" --include='*.html' \
+         | grep -v "RollScrub-$VERSION\.zip" || true)"
+[ -z "$STALE" ] || die "site still links an older build: $STALE"
+
 echo
 echo "Release $VERSION ($BUILD) ready:"
 ls -lh "$RELEASES" "$APPCAST"
+echo
+echo "The site's download links now point at $VERSION."
 echo
 echo "Commit and push — Cloudflare Pages deploys site/ and these go live:"
 echo "  ${DOWNLOAD_PREFIX}RollScrub-$VERSION.zip"
