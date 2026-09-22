@@ -241,6 +241,12 @@ npx wrangler secret put CREEM_PRODUCT_ID
   every launch. The grace window is thirty days; spending a customer's network
   and Creem's rate limit dozens of times a day to re-learn the same answer
   buys nothing.
+- **A refund revokes.** Verified on a test purchase, 22 September 2026: after
+  refunding, Creem shows the licence as `inactive`, which the proxy already
+  treats as dead — so the app drops back to locked on its next daily
+  re-check. No webhook is needed for this. The one thing still taken on
+  trust is that the API reports the same word the dashboard displays; confirm
+  that on the first real refund.
 - Never gate undo.
 
 **Before opening the shop, swap the Creem test key for a live one.** Creem
