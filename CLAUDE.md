@@ -69,7 +69,7 @@ Specific traps, each of which has already happened:
 
 `swift test` — 84 tests, and they run in under a second. Keep it that way.
 
-`npm test` — 32 tests over the Worker: the licence proxy in
+`npm test` — 34 tests over the Worker: the licence proxy in
 `worker/license.js`, and the person-or-crawler split in `worker/index.js`.
 Node's own runner, no dependencies. Name the file explicitly
 (`worker/*.test.js`), not the directory: `node --test worker/` reports one
@@ -242,3 +242,13 @@ npx wrangler secret put CREEM_PRODUCT_ID
   and Creem's rate limit dozens of times a day to re-learn the same answer
   buys nothing.
 - Never gate undo.
+
+**Before opening the shop, swap the Creem test key for a live one.** Creem
+infers test or live from the key itself, and the proxy refuses test-mode keys
+at activation — so a live store running on a test key refuses every real
+buyer, with a message about the key not being live. It is the most likely way
+for launch day to fail.
+
+```bash
+npx wrangler secret put CREEM_API_KEY   # the live key, Licenses read+write
+```

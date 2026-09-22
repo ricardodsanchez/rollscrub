@@ -82,11 +82,24 @@ function instanceName(supplied) {
   return name || "Unnamed Mac";
 }
 
+/**
+ * The configured values, with surrounding whitespace removed.
+ *
+ * `wrangler secret put` stores what it is handed, and a value pasted from a
+ * dashboard often arrives with a trailing newline. On the product id that is
+ * invisible and merciless: every activation is refused as belonging to a
+ * different product, and the message sends you looking at the wrong store.
+ * On the API key a stray newline is an illegal header value, which throws
+ * inside fetch and reads as "Creem is unreachable" forever.
+ */
+const apiKey = (env) => env.CREEM_API_KEY?.trim();
+const ourProduct = (env) => env.CREEM_PRODUCT_ID?.trim();
+
 async function callCreem(env, action, payload) {
   const response = await fetch(`${CREEM_API}/${action}`, {
     method: "POST",
     headers: {
-      "x-api-key": env.CREEM_API_KEY,
+      "x-api-key": apiKey(env),
       "content-type": "application/json",
       accept: "application/json",
     },
@@ -159,7 +172,7 @@ async function confirmOurs(env, key, instanceID) {
   if (!response.ok || !json || typeof json !== "object") {
     return envelope("error", { reason: CANNOT_TELL }, 502);
   }
-  if (json.product_id !== env.CREEM_PRODUCT_ID) {
+  if (json.product_id !== ourProduct(env)) {
     return envelope("refused", {
       reason: "That key is for a different product, not RollScrub.",
     });
@@ -182,7 +195,7 @@ export async function license(request, env, action) {
   // A missing binding is our mistake, and it must read as "could not find
   // out". Were it a refusal, one bad deploy would revoke every licence in the
   // field the first time each copy re-checked itself.
-  if (!env.CREEM_API_KEY || !env.CREEM_PRODUCT_ID) {
+  if (!apiKey(env) || !ourProduct(env)) {
     return envelope("error", { reason: CANNOT_TELL }, 503);
   }
 
@@ -251,7 +264,7 @@ export async function license(request, env, action) {
   // customer's licence on their next daily re-check, silently, with nobody
   // having done anything. Deactivation does its own check in confirmOurs(),
   // before it removes anything.
-  if (action === "activate" && json.product_id !== env.CREEM_PRODUCT_ID) {
+  if (action === "activate" && json.product_id !== ourProduct(env)) {
     await releaseInstance(env, key, created);
     return envelope("refused", {
       reason: "That key is for a different product, not RollScrub.",

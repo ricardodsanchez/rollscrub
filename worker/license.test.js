@@ -357,3 +357,24 @@ test("replies are never cached", async () => {
   const response = await license(post("validate"), ENV, "validate");
   assert.equal(response.headers.get("cache-control"), "no-store");
 });
+
+/// `wrangler secret put` stores exactly what it is given, and a value pasted
+/// from a dashboard frequently carries a trailing newline. Untrimmed, that
+/// makes every activation fail as "a different product" — a failure with no
+/// visible cause, pointing at the wrong thing.
+test("a secret pasted with stray whitespace still matches", async () => {
+  creemReplies({ json: licence() });
+  const env = { CREEM_API_KEY: "creem_test_key\n", CREEM_PRODUCT_ID: " prod_ours\n" };
+  const response = await license(post("activate", { key: "K" }), env, "activate");
+  assert.equal(await verdictOf(response), "ok");
+});
+
+/// A secret set to nothing but whitespace is not configured. It has to read
+/// as "could not check", not as a refusal.
+test("a whitespace-only secret counts as missing, not as a refusal", async () => {
+  creemReplies();
+  const env = { CREEM_API_KEY: "  ", CREEM_PRODUCT_ID: "prod_ours" };
+  const response = await license(post("validate"), env, "validate");
+  assert.equal(await verdictOf(response), "error");
+  assert.equal(calls.length, 0);
+});
