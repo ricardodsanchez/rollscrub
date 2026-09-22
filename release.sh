@@ -70,8 +70,13 @@ echo "==> regenerating appcast"
 # newest zip would make the changelog lie.
 echo "==> pointing the site's download links at $VERSION"
 while IFS= read -r page; do
+  # Both quote styles, spelled out twice rather than matched with a
+  # back-reference: BSD sed silently matches nothing when a \1 appears in an
+  # -E pattern, so the clever version rewrites no links at all and the check
+  # below then aborts every release.
   /usr/bin/sed -i '' -E \
-    "s|href=\"/releases/RollScrub-[0-9]+(\.[0-9]+)*\.zip\"|href=\"/releases/RollScrub-$VERSION.zip\"|g" \
+    -e "s|href=\"/releases/RollScrub-[0-9]+(\.[0-9]+)*\.zip\"|href=\"/releases/RollScrub-$VERSION.zip\"|g" \
+    -e "s|href='/releases/RollScrub-[0-9]+(\.[0-9]+)*\.zip'|href='/releases/RollScrub-$VERSION.zip'|g" \
     "$page"
 done < <(find "$SITE" -name '*.html' -type f)
 
@@ -79,7 +84,7 @@ done < <(find "$SITE" -name '*.html' -type f)
 # on the page and surfaces only as a customer who cannot activate. The
 # `|| true` matters: grep exits non-zero when it finds nothing, which under
 # `set -e` would kill the script precisely when everything is correct.
-STALE="$(grep -rhoE "href=\"/releases/RollScrub-[0-9]+(\.[0-9]+)*\.zip\"" "$SITE" --include='*.html' \
+STALE="$(grep -rhoE "href=[\"']/releases/RollScrub-[0-9]+(\.[0-9]+)*\.zip[\"']" "$SITE" --include='*.html' \
          | grep -v "RollScrub-$VERSION\.zip" || true)"
 [ -z "$STALE" ] || die "site still links an older build: $STALE"
 
