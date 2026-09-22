@@ -14,3 +14,8 @@ private_keys/
 
 # Wrangler local state and logs
 .wrangler/
+
+# Xcode workspace and per-user state written when the package is opened in
+# Xcode. Local to one machine and one person; nothing here describes the
+# package itself.
+.swiftpm/
