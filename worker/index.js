@@ -12,6 +12,8 @@
  * no business fingerprinting the people reading about it.
  */
 
+import { license } from "./license.js";
+
 const DAY = () => new Date().toISOString().slice(0, 10);
 
 /** Sparkle sends "RollScrub/1.0 Sparkle/2.6.0"; keep only the app version. */
@@ -282,6 +284,14 @@ export default {
 
     if (url.pathname === "/stats") return stats(request, env);
     if (url.pathname === "/notify") return notify(request, env);
+
+    // The app's licence calls. Proxied rather than made direct because the
+    // Creem API key cannot ship inside a downloadable binary; see license.js.
+    const licenceAction = url.pathname.startsWith("/license/")
+      && url.pathname.slice("/license/".length);
+    if (["activate", "validate", "deactivate"].includes(licenceAction)) {
+      return license(request, env, licenceAction);
+    }
 
     // Range requests are how a resumed or chunked download arrives, and
     // counting each one would report a single download several times over.

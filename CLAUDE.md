@@ -4,7 +4,7 @@ A macOS app and CLI that finds byte-identical duplicate photos and videos and
 sets them aside for review. Swift Package Manager; `RollScrubCore` holds the
 logic, `RollScrubApp` the SwiftUI app, `rollscrub` the CLI.
 
-Sold for $25 through Lemon Squeezy. Distributed directly — Developer ID signed,
+Sold for $25 through Creem. Distributed directly — Developer ID signed,
 notarized, updated through Sparkle from `rollscrub.com`. There is no App Store
 review standing between a mistake and a customer's photo library.
 
@@ -37,6 +37,12 @@ show up in the test suite — the fixtures are tiny.
 **Measure before and after, on a real tree, whenever you touch the scan path.**
 The CLI is the instrument:
 
+If `swift test` dies in `CodeSign` with *"resource fork, Finder information,
+or similar detritus"*, the repo is in an iCloud-synced folder and sync has put
+`com.apple.FinderInfo` back on `.build`. Build elsewhere —
+`swift test --scratch-path /tmp/rollscrub-build` — or exclude `.build` from
+sync. It is never the code.
+
 ```bash
 swift build -c release --product rollscrub
 /usr/bin/time -p "$(swift build -c release --product rollscrub --show-bin-path)/rollscrub" \
@@ -61,7 +67,18 @@ Specific traps, each of which has already happened:
 
 ## Tests
 
-`swift test` — 77 tests, and they run in under a second. Keep it that way.
+`swift test` — 84 tests, and they run in under a second. Keep it that way.
+
+`npm test` — 28 tests over `worker/license.js`, the licence proxy. Node's own
+runner, no dependencies. Name the file explicitly
+(`worker/*.test.js`), not the directory: `node --test worker/` reports one
+passing test and runs none of them, which is the same green-on-nothing trap as
+a `swift test` that filtered everything out.
+
+The Worker tests stub `fetch` and assert on the *verdict* the proxy returns
+for every way Creem can fail — 403, 404, 5xx, HTML from a captive portal, an
+unrecognised status. Those cases are the point of the file: each one is a way
+a customer could lose software they paid for.
 
 **Every bug fix needs a test that fails without the fix.** Prove it, don't
 assume it:
@@ -159,12 +176,68 @@ silently, forever, for everyone.
 
 ## Licensing
 
-Keys are Lemon Squeezy's, product `1358068`, three activations, never expiring.
+Keys are Creem's, three activations, never expiring.
 
-- The licence API answers for the **whole platform**. "Valid" does not mean
-  "bought from us" — `meta.product_id` must be checked, or any seller's key
-  unlocks the app.
-- Only an explicit server refusal may revoke a licence. A timeout, a 500 or a
-  missing network must never lock someone out of software they bought; that is
-  what the 30-day offline grace is for.
+**The app never talks to Creem.** Creem's licence endpoints authenticate with
+`x-api-key`, a store-wide secret that can remove any customer's activations,
+and a downloadable binary cannot hold a secret. `worker/license.js` on
+rollscrub.com holds the key and is the only thing that calls Creem. It needs
+two secrets set, and refuses to answer at all without them:
+
+```bash
+npx wrangler secret put CREEM_API_KEY
+npx wrangler secret put CREEM_PRODUCT_ID
+```
+
+- **Only an explicit server refusal may revoke a licence.** A timeout, a 500,
+  a rotated API key or a missing network must never lock someone out of
+  software they bought; that is what the 30-day offline grace is for.
+
+  This is why the Worker replies with a `verdict` of `ok`, `refused` or
+  `error` rather than letting the app read meaning out of a status code.
+  Creem returns 403 when *our* key is wrong and 404 when a key is unknown —
+  both indistinguishable from a misconfigured deploy. So only an
+  authoritative 200 may refuse a re-check, and anything unrecognised is
+  `error`, which changes nothing. `License.verdict(from:)` is the single
+  place that decides, and `LicenseTests` exists to keep `refused` and
+  `error` apart.
+- The licence API answers for the **whole store**. "Valid" does not mean
+  "bought from us" — the Worker checks `product_id` against
+  `CREEM_PRODUCT_ID`, because a key for any other product we ever sell would
+  otherwise unlock removal. That check is server-side on purpose: in the app,
+  a patched binary skips it.
+- **Every refusal names the values it refuses on. None is spelled "not the
+  value I expected".** A key is rejected as test-mode because its `mode` is
+  one of `local`/`test`/`sandbox`, and as dead because its `status` is one of
+  `inactive`/`expired`/`disabled` — never because the field failed to match a
+  value we guessed. Creem publishes no example of what a live key's `mode`
+  says, and demanding a guessed one would refuse every real key, which on a
+  re-check *deletes* a paid licence. A field value we do not recognise is
+  `error`, and `error` changes nothing.
+
+  The mode check also runs at activation only: a key's mode cannot change
+  afterwards, so re-checking it risks everything and catches nothing.
+- **Ownership is confirmed before anything is removed.** `/license/deactivate`
+  reads first and deletes second. The other order would make the route a free
+  deactivation service for every other seller on Creem: anyone holding any key
+  and instance id could spend it against a stranger's product.
+- An activation created on a key that turns out not to be ours is released
+  again, so a mistyped key does not eat a stranger's activation slot.
+- **Being throttled is `error`, and a missing limiter lets the request
+  through.** The proxy is unauthenticated by nature and forwards to an API we
+  are billed on, so it is rate limited per address per action — but a limiter
+  that could answer `refused`, or one whose absence closed the door, would
+  cost a customer their licence to save us money. That trade never goes that
+  way.
+- **A re-check confirms that a licence is alive, and nothing else.** Which
+  product a key belongs to, and whether it is a live key, are settled at
+  activation and cannot change afterwards — so those checks are scoped to the
+  activation path. Re-asking them daily could only ever confirm what we
+  already knew, while betting every customer's licence on Creem shaping a
+  field the same way in two different replies. Deactivation still checks
+  ownership in `confirmOurs()`, because it removes something.
+- **The app re-checks at most once a day** (`License.recheckInterval`), not on
+  every launch. The grace window is thirty days; spending a customer's network
+  and Creem's rate limit dozens of times a day to re-learn the same answer
+  buys nothing.
 - Never gate undo.

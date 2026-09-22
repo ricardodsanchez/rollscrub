@@ -1,12 +1,19 @@
 import Foundation
 import Security
 
-/// Lemon Squeezy licensing.
+/// Licensing, through Creem.
 ///
 /// The design goal is that a network problem never costs someone the use of
 /// software they paid for. An activated licence keeps working offline, and only
 /// an explicit "this key is no longer valid" answer from the server — not a
 /// timeout, not a 500, not a missing Wi-Fi connection — ever revokes it.
+///
+/// The app does not talk to Creem directly. Creem's licence endpoints
+/// authenticate with a store-wide secret that cannot ship inside a
+/// downloadable binary, so `worker/license.js` on rollscrub.com holds the key
+/// and answers in its own small vocabulary. That Worker also decides whether a
+/// key belongs to this product — a check that used to live here, where a
+/// patched binary could simply skip it.
 public enum License {
 
     /// Removing files is the paid action. Scanning, reviewing and the reports
@@ -14,13 +21,7 @@ public enum License {
     /// deciding whether it is worth paying for.
     public static let purchaseURL = URL(string: "https://rollscrub.com/#pricing")!
 
-    /// The Lemon Squeezy product these keys must belong to.
-    ///
-    /// The licence API answers for the whole platform, not for one store: it
-    /// will happily confirm that someone else's $3 key is valid. Without this
-    /// check, any key bought from any seller on Lemon Squeezy would unlock
-    /// RollScrub.
-    static let productID = 1_358_068
+    static let endpoint = URL(string: "https://rollscrub.com/license/")!
 
     public struct State: Codable, Equatable, Sendable {
         public var key: String
@@ -54,6 +55,23 @@ public enum License {
     /// should not be locked out of their own files by a flaky airport network.
     static let offlineGrace: TimeInterval = 60 * 60 * 24 * 30
 
+    /// How long a confirmation is good for before the app asks again.
+    ///
+    /// The re-check exists to notice a refund or a revocation, and a day is
+    /// soon enough for that. Asking on every launch instead would put a
+    /// third-party API in the path of opening the app dozens of times a day,
+    /// for a licence we already believe in for another month — spending
+    /// somebody else's rate limit, and our money, to learn nothing.
+    static let recheckInterval: TimeInterval = 60 * 60 * 24
+
+    /// Whether a stored licence is due to be confirmed again.
+    static func shouldRecheck(_ state: State, now: Date = Date()) -> Bool {
+        guard let validated = state.lastValidated else { return true }
+        // A clock that has gone backwards — a timezone fix, a dead battery —
+        // must not park a licence in a state that never re-checks again.
+        return !(0..<recheckInterval).contains(now.timeIntervalSince(validated))
+    }
+
     public static var isActivated: Bool {
         stored() != nil
     }
@@ -67,90 +85,103 @@ public enum License {
         return now.timeIntervalSince(validated) < offlineGrace
     }
 
+    // MARK: - What the server told us
+
+    /// The three things a reply can mean.
+    ///
+    /// Modelled as a type rather than read out of a status code at each call
+    /// site, because the whole correctness of this file is the difference
+    /// between `refused` and `cannotTell`: the first may revoke a licence, and
+    /// the second must never do anything at all.
+    enum Verdict: Equatable {
+        case ok(instanceID: String?)
+        case refused(String)
+        case cannotTell
+    }
+
+    /// Reads a reply from the licence Worker.
+    ///
+    /// Anything unrecognised is `cannotTell`. A captive portal, a hijacked DNS
+    /// answer or a future version of the Worker all produce JSON that parses
+    /// and means nothing; treating that as a refusal would delete a paying
+    /// customer's licence on a hotel network.
+    static func verdict(from json: [String: Any]) -> Verdict {
+        switch json["verdict"] as? String {
+        case "ok":
+            return .ok(instanceID: json["instance_id"] as? String)
+        case "refused":
+            return .refused(
+                (json["reason"] as? String) ?? "That licence key was not accepted.")
+        default:
+            return .cannotTell
+        }
+    }
+
     // MARK: - Activation
 
     public static func activate(key raw: String, deviceName: String) async throws -> State {
         let key = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else { throw ActivationError.empty }
 
-        let body = [
-            "license_key": key,
+        let json = try await post("activate", [
+            "key": key,
             "instance_name": deviceName,
-        ]
-        let json = try await post("activate", body)
+        ])
 
-        guard let activated = json["activated"] as? Bool, activated else {
-            throw ActivationError.refused(
-                (json["error"] as? String) ?? "That licence key was not accepted.")
+        switch verdict(from: json) {
+        case .ok(let instanceID):
+            guard let instanceID else {
+                throw ActivationError.refused("The licence server sent an unexpected reply.")
+            }
+            let state = State(key: key, instanceID: instanceID, lastValidated: Date())
+            try store(state)
+            return state
+        case .refused(let reason):
+            throw ActivationError.refused(reason)
+        case .cannotTell:
+            throw ActivationError.unreachable
         }
-        guard let instance = json["instance"] as? [String: Any],
-              let id = instance["id"] as? String
-        else {
-            throw ActivationError.refused("The licence server sent an unexpected reply.")
-        }
-
-        // Checked after activating rather than before, so the happy path stays
-        // one round trip — but the instance we just created on someone else's
-        // licence is released again, rather than silently eating one of their
-        // activations because they mistyped a key here.
-        guard isOurs(json) else {
-            _ = try? await post("deactivate", ["license_key": key, "instance_id": id])
-            throw ActivationError.refused(
-                "That key is for a different product, not RollScrub.")
-        }
-
-        let state = State(key: key, instanceID: id, lastValidated: Date())
-        try store(state)
-        return state
     }
 
     /// Re-checks in the background. Silent on success, and silent on failure
     /// too unless the server positively says the key is no longer valid.
-    public static func revalidate() async {
+    public static func revalidate(now: Date = Date()) async {
         guard var state = stored() else { return }
+        guard shouldRecheck(state, now: now) else { return }
 
         let json: [String: Any]
         do {
             json = try await post("validate", [
-                "license_key": state.key,
+                "key": state.key,
                 "instance_id": state.instanceID,
             ])
         } catch {
             return  // unreachable: the grace window covers this
         }
 
-        if let valid = json["valid"] as? Bool, valid {
-            // Re-checked on every validation, not just at activation: a key
-            // stored by an older build that lacked this check should stop
-            // unlocking removal the first time it is re-examined.
-            guard isOurs(json) else { forget(); return }
+        switch verdict(from: json) {
+        case .ok:
+            // Another copy of the app, or the person hitting Deactivate, may
+            // have forgotten this licence while the request was in flight.
+            // Writing unconditionally would resurrect it for another day.
+            guard stored() != nil else { return }
             state.lastValidated = Date()
             try? store(state)
-        } else if json["error"] != nil {
-            // An explicit refusal — refunded, revoked, or deactivated elsewhere.
+        case .refused:
+            // Refunded, revoked, or this Mac's activation removed elsewhere.
             forget()
+        case .cannotTell:
+            break  // change nothing
         }
     }
 
     public static func deactivate() async {
         guard let state = stored() else { return }
         _ = try? await post("deactivate", [
-            "license_key": state.key,
+            "key": state.key,
             "instance_id": state.instanceID,
         ])
         forget()
-    }
-
-    /// Whether a licence-API reply describes a key for this product.
-    ///
-    /// Absent or unparseable metadata counts as "not ours". The server always
-    /// sends it, so its absence means something other than Lemon Squeezy
-    /// answered — which is exactly when refusing is the safe direction.
-    static func isOurs(_ json: [String: Any]) -> Bool {
-        guard let meta = json["meta"] as? [String: Any],
-              let product = meta["product_id"] as? Int
-        else { return false }
-        return product == productID
     }
 
     // MARK: - Transport
@@ -158,16 +189,12 @@ public enum License {
     private static func post(_ path: String, _ fields: [String: String]) async throws
         -> [String: Any]
     {
-        var request = URLRequest(
-            url: URL(string: "https://api.lemonsqueezy.com/v1/licenses/\(path)")!)
+        var request = URLRequest(url: endpoint.appendingPathComponent(path))
         request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 20
-        request.httpBody = fields
-            .map { "\($0.key)=\(urlEncoded($0.value))" }
-            .joined(separator: "&")
-            .data(using: .utf8)
+        request.httpBody = try? JSONSerialization.data(withJSONObject: fields)
 
         let data: Data
         do {
@@ -176,16 +203,18 @@ public enum License {
             throw ActivationError.unreachable
         }
 
+        // The Worker sends its verdict in the body on every path, including
+        // its error statuses, so the status code is deliberately not consulted
+        // here — `verdict(from:)` is the single place that decides meaning.
+        // Unreachable, not refused. A captive portal or an ISP interstitial
+        // answers with HTML, and calling that a refusal would be one edit away
+        // from a hotel network deleting a licence: `revalidate()` happens to
+        // swallow every thrown error today, but the label is what a later
+        // reader will trust.
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw ActivationError.refused("The licence server sent an unexpected reply.")
+            throw ActivationError.unreachable
         }
         return json
-    }
-
-    private static func urlEncoded(_ value: String) -> String {
-        var allowed = CharacterSet.alphanumerics
-        allowed.insert(charactersIn: "-._~")
-        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 
     // MARK: - Keychain
