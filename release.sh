@@ -94,7 +94,11 @@ ls -lh "$RELEASES" "$APPCAST"
 echo
 echo "The site's download links now point at $VERSION."
 echo
-echo "Commit and push — Cloudflare Pages deploys site/ and these go live:"
+echo "Commit and push, then DEPLOY — a push alone changes nothing:"
+echo "  npx wrangler deploy"
+echo
+echo "site/ is served by the Worker's ASSETS binding, so these go live only"
+echo "once that deploy lands:"
 echo "  ${DOWNLOAD_PREFIX}RollScrub-$VERSION.zip"
 echo "  https://rollscrub.com/appcast.xml"
 echo
