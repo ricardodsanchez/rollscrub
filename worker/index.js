@@ -10,6 +10,10 @@
  * agent, no per-request timestamp, no cookie, nothing that identifies a person
  * — this counts copies, and a site that promises not to touch your photos has
  * no business fingerprinting the people reading about it.
+ *
+ * The user agent is *read* once, to decide whether a request is a person or a
+ * crawler, and then discarded; only which of the two tallies to increment
+ * survives. See looksAutomated().
  */
 
 import { license } from "./license.js";
@@ -23,6 +27,40 @@ function appVersion(userAgent) {
 }
 
 /**
+ * Agents that announce themselves as machines, and the shapes lazy scanners
+ * take. Matched case-insensitively against the user agent.
+ */
+const AUTOMATED =
+  /bot|crawl|spider|slurp|scrape|scan|curl|wget|python|go-http|java\/|okhttp|libwww|httpclient|headless|phantom|puppeteer|playwright|monitor|uptime|fetcher|archiver|indexer|semrush|ahrefs|zgrab|masscan|censys/i;
+
+/**
+ * Whether a request looks automated.
+ *
+ * Deliberately crude, and deliberately only ever used to split a count in
+ * two. The user agent is chosen by the caller and trivially forged, so this
+ * catches honest crawlers and lazy scanners and nothing else — which is
+ * enough, because the job here is not security (Cloudflare's managed rules do
+ * that) but keeping one number honest: how many *people* read this page.
+ *
+ * Erring towards "automated" is the right direction. An overstated human
+ * count is the one that leads somewhere expensive — rewriting a page that was
+ * never being read, or reading a conversion rate that was never real.
+ *
+ * The agent string itself is never stored. Only this verdict is, as a count.
+ */
+export function looksAutomated(request) {
+  const agent = request.headers.get("user-agent");
+  // Every browser ever shipped sends one. Nothing that omits it is a reader.
+  if (!agent) return true;
+  if (AUTOMATED.test(agent)) return true;
+  // No rendering engine named means nothing is being rendered. This also
+  // catches Sparkle fetching the zip for an automatic update, which is the
+  // right answer: that is an existing install updating itself, not somebody
+  // new deciding to try the app.
+  return !/mozilla|applewebkit|gecko|chrome|safari|firefox|opera|edge/i.test(agent);
+}
+
+/**
  * The site someone arrived from, host only — never the full URL, which can
  * carry search terms and other people's query strings. Same-origin and absent
  * referrers are both "direct".
@@ -32,7 +70,10 @@ function referrerHost(request) {
   if (!referer) return null;
   try {
     const host = new URL(referer).hostname;
-    return host === new URL(request.url).hostname ? null : host.slice(0, 80);
+    // rollscrub.app redirects here, so arrivals through it are direct, not a
+    // referral from somebody else's site.
+    const ours = new Set([new URL(request.url).hostname, "rollscrub.app", "www.rollscrub.app"]);
+    return ours.has(host) ? null : host.slice(0, 80);
   } catch {
     return null;
   }
@@ -223,11 +264,20 @@ async function stats(request, env) {
     res.results.map((r) => `<tr>${cols.map((c) => c(r)).join("")}</tr>`).join("") ||
     `<tr><td class="muted" colspan="9">Nothing yet.</td></tr>`;
 
+  // People, not crawlers. Everything below counts only requests that looked
+  // like a browser; the automated half is kept and shown separately rather
+  // than thrown away, because "how much of this is real" is itself a number
+  // worth watching.
   const views = total("pageview");
   const downloads = total("download");
+  const botViews = total("pageview-bot");
+  const botDownloads = total("download-bot");
   // The number the page is actually for: of everyone who read it, how many
   // wanted the app enough to fetch it.
   const rate = views ? `${((downloads / views) * 100).toFixed(1)}%` : "—";
+  const noise = views + botViews
+    ? `${((botViews / (views + botViews)) * 100).toFixed(0)}%`
+    : "—";
 
   return html(`
 <h1>RollScrub</h1>
@@ -237,6 +287,10 @@ async function stats(request, env) {
   <div><div class="big">${rate}</div><div class="muted">of readers download</div></div>
   <div><div class="big">${total("update-check")}</div><div class="muted">update checks</div></div>
 </div>
+<p class="muted">Counts above are requests that looked like a browser. Set aside as
+automated: <strong>${botViews}</strong> page views and <strong>${botDownloads}</strong>
+downloads &mdash; ${noise} of all traffic. Judged from the user agent alone, which is
+forgeable, so read it as a floor on the noise rather than a measurement of it.</p>
 
 <h2>Waiting for the shop to open (${waiting.results.length})</h2>
 <table><tr><th>Email</th><th>Signed up</th><th>From</th></tr>
@@ -298,10 +352,18 @@ export default {
     // HEAD is a probe, not a download.
     const event = classify(url.pathname, request);
     if (event && request.method === "GET" && !request.headers.has("range")) {
-      ctx.waitUntil(record(env, event, request));
+      // Update checks are machine traffic by definition and already counted
+      // on their own; splitting them would say nothing. Everything else is
+      // recorded under its own kind or a "-bot" twin, so that "page views"
+      // means people and the crawlers stay visible rather than hidden.
+      const automated = event.kind !== "update-check" && looksAutomated(request);
+      const kind = automated ? `${event.kind}-bot` : event.kind;
+      ctx.waitUntil(record(env, { kind, name: event.name }, request));
 
-      // Where a reader came from, counted alongside the visit itself.
-      const from = event.kind === "pageview" ? referrerHost(request) : null;
+      // Where a reader came from, counted alongside the visit itself. Not
+      // worth recording for crawlers: it is their own noise, fed back.
+      const from =
+        !automated && event.kind === "pageview" ? referrerHost(request) : null;
       if (from) {
         ctx.waitUntil(record(env, { kind: "referrer", name: from }, request));
       }

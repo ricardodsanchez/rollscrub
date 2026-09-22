@@ -79,6 +79,14 @@ country code the request came from and nothing more precise. When we record
 where a visitor arrived from, we keep only the site's domain — never the full
 address, which can carry search terms and other sites' information.</p>
 
+<p>Those daily totals are split in two, between requests that look like a
+browser and requests that look automated — most of this site's traffic is
+crawlers and scanners, and counting them as readers makes the numbers
+meaningless. The split is decided by reading the browser identification your
+request already carries, and <strong>that text is never stored</strong>: it is
+looked at once, in memory, and only the resulting tally is written down. It is
+not used to build a profile, and it cannot be, because nothing identifying is
+kept alongside it.</p>
 
 <p>The site is served by Cloudflare, which as part of delivering it processes
 requests, including IP addresses, on our behalf for security and routing. That

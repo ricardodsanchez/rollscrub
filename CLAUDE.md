@@ -69,8 +69,9 @@ Specific traps, each of which has already happened:
 
 `swift test` — 84 tests, and they run in under a second. Keep it that way.
 
-`npm test` — 28 tests over `worker/license.js`, the licence proxy. Node's own
-runner, no dependencies. Name the file explicitly
+`npm test` — 32 tests over the Worker: the licence proxy in
+`worker/license.js`, and the person-or-crawler split in `worker/index.js`.
+Node's own runner, no dependencies. Name the file explicitly
 (`worker/*.test.js`), not the directory: `node --test worker/` reports one
 passing test and runs none of them, which is the same green-on-nothing trap as
 a `swift test` that filtered everything out.
