@@ -50,7 +50,7 @@ cp "$BINPATH/rollscrub" "$STAGE/Contents/MacOS/rollscrub"
 # would run on this Mac and fail on the other architecture, and nothing else
 # in this script would notice.
 for slice in arm64 x86_64; do
-  lipo -verify_arch "$STAGE/Contents/MacOS/rollscrub" "$slice" \
+  lipo "$STAGE/Contents/MacOS/rollscrub" -verify_arch "$slice" \
     || { echo "error: the CLI is missing the $slice slice" >&2; exit 1; }
 done
 
