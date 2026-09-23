@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @main
@@ -7,6 +8,38 @@ struct RollScrubApp: App {
     @StateObject private var updater = Updater()
     @StateObject private var license = LicenseModel()
     @Environment(\.openWindow) private var openWindow
+
+    /// Reports what happened in an alert, because a menu item that silently
+    /// succeeds and a menu item that silently fails look identical — and this
+    /// one usually cannot succeed without a password.
+    private func installCommandLineTool() {
+        let alert = NSAlert()
+        switch CommandLineTool.install() {
+        case .installed:
+            alert.messageText = "Command line tool installed"
+            alert.informativeText = "Open a new terminal window and run "
+                + "`rollscrub --help`. It uses the licence you activated here."
+        case .alreadyInstalled:
+            alert.messageText = "Already installed"
+            alert.informativeText = "`rollscrub` already points at this copy of "
+                + "RollScrub."
+        case .needsTerminal(let reason, let command):
+            alert.messageText = "RollScrub cannot install it for you"
+            alert.informativeText = command.isEmpty
+                ? reason
+                : "\(reason)\n\nRun this in Terminal:\n\n\(command)"
+            if !command.isEmpty {
+                alert.addButton(withTitle: "Copy Command")
+                alert.addButton(withTitle: "Cancel")
+                if alert.runModal() == .alertFirstButtonReturn {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(command, forType: .string)
+                }
+                return
+            }
+        }
+        alert.runModal()
+    }
 
     var body: some Scene {
         Window("RollScrub Review", id: "review") {
@@ -41,6 +74,10 @@ struct RollScrubApp: App {
                 Button(license.isPro ? "Licence…" : "Unlock Removal…") {
                     openWindow(id: "license")
                 }
+
+                Divider()
+
+                Button("Install Command Line Tool…") { installCommandLineTool() }
             }
 
             // Replaces the default Help item, which otherwise looks for a help

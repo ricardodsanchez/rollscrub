@@ -271,6 +271,24 @@ it — which reads as `error` on every activation.
   test mode did. Confirm both on the first real refund — a 100%-off order may
   not be refundable at all, so this one cannot be settled before a real sale.
 - Never gate undo.
+- **The CLI is a separate binary, so the keychain is not silently shared.**
+  It ships inside the bundle at `Contents/MacOS/rollscrub` and is signed with
+  its own identifier, `com.rollscrub.cli`. A macOS keychain item created by
+  `SecItemAdd` with no access group is ACL'd to the creating code signature
+  alone, so the CLI's first read is expected to raise the system permission
+  dialog rather than succeed silently — and a headless run, which is the
+  CLI's whole purpose, cannot answer it. **Unverified on hardware**: confirm
+  before the site claims the CLI again, by activating in the app and running
+  the bundled binary from a fresh login.
+
+  The supported fix is a shared `keychain-access-group` entitlement on both
+  binaries (Team `R398R96429`) plus `kSecAttrAccessGroup` on all three
+  keychain queries in `License.swift`, likely with the data-protection
+  keychain. It is deliberately *not* done yet: getting it wrong means every
+  customer's stored licence becomes unreadable, which is the one failure this
+  file exists to prevent, and it cannot be tested anywhere but a real Mac.
+  Until then, Help and the CLI's own refusal both name the prompt and say to
+  choose Always Allow.
 
 **A junk-key smoke test proves less than it looks like.** This is the check
 worth running after any secret or deploy change:

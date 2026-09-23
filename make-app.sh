@@ -33,10 +33,26 @@ touch .build/.metadata_never_index
 # from the other kind of Mac.
 ARCHS=(--arch arm64 --arch x86_64)
 swift build -c release "${ARCHS[@]}" --product RollScrubApp
+swift build -c release "${ARCHS[@]}" --product rollscrub
 BINPATH="$(swift build -c release "${ARCHS[@]}" --product RollScrubApp --show-bin-path)"
 
 mkdir -p "$STAGE/Contents/MacOS" "$STAGE/Contents/Resources" "$STAGE/Contents/Frameworks"
 cp "$BINPATH/RollScrubApp" "$STAGE/Contents/MacOS/RollScrub"
+
+# The CLI rides inside the bundle rather than shipping beside it. A loose
+# executable next to the app would need its own notarization ticket and its
+# own path on the customer's disk; inside Contents/MacOS it is covered by the
+# app's signature, stapled with the app, and updated by Sparkle along with it.
+# The app's "Install Command Line Tool" menu item symlinks it onto PATH.
+cp "$BINPATH/rollscrub" "$STAGE/Contents/MacOS/rollscrub"
+
+# Checked rather than assumed: a single-arch CLI inside a universal bundle
+# would run on this Mac and fail on the other architecture, and nothing else
+# in this script would notice.
+for slice in arm64 x86_64; do
+  lipo -verify_arch "$STAGE/Contents/MacOS/rollscrub" "$slice" \
+    || { echo "error: the CLI is missing the $slice slice" >&2; exit 1; }
+done
 
 # SwiftPM links Sparkle but leaves it in the build directory: nothing embeds it
 # into a hand-assembled bundle, so the app would launch to a missing-library
@@ -123,6 +139,7 @@ sign "$SPARKLE/XPCServices/Installer.xpc"
 sign "$SPARKLE/Updater.app"
 sign "$SPARKLE/Autoupdate"
 sign "$STAGE/Contents/Frameworks/Sparkle.framework"
+sign "$STAGE/Contents/MacOS/rollscrub" --identifier com.rollscrub.cli
 sign "$STAGE" --identifier com.rollscrub.RollScrub
 
 if [ -n "$SIGN_IDENTITY" ]; then

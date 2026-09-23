@@ -94,13 +94,21 @@ struct HelpView: View {
                 }
 
                 HelpSection("Command line") {
-                    HelpText("RollScrub also ships as a command-line tool for scripted or "
-                             + "very large sweeps. It writes a text and CSV report and, "
-                             + "with `--move`, sets duplicates aside in a review folder "
-                             + "inside whichever drive each was found on — never deleting, "
-                             + "and reversible with `--undo`.")
+                    HelpText("RollScrub ships a command-line tool for scripted or very "
+                             + "large sweeps. It writes a text and CSV report and, with "
+                             + "`--move`, sets duplicates aside in a review folder inside "
+                             + "whichever drive each was found on — never deleting, and "
+                             + "reversible with `--undo`.")
+                    HelpText("It lives inside this app. To put it on your PATH, choose "
+                             + "**RollScrub → Install Command Line Tool…**, which links it "
+                             + "into `/usr/local/bin` and will ask for your password. Then "
+                             + "open a new terminal window:")
                     CodeBlock("rollscrub ~/Pictures \"/Volumes/Extreme Pro\"")
-                    HelpText("Run `rollscrub --help` for the full list of options.")
+                    HelpText("It uses the licence you activated here — there is nothing "
+                             + "separate to buy. Because it is a separate binary from the "
+                             + "app, macOS asks permission the first time it reads that "
+                             + "licence: choose **Always Allow** and it will not ask again. "
+                             + "Run `rollscrub --help` for the full list of options.")
                 }
             }
             .padding(32)

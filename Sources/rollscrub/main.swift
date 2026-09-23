@@ -222,6 +222,12 @@ guard License.isPro() else {
     lists every file that would be set aside. Activate a licence in the
     RollScrub app — Menu → RollScrub → Unlock Removal — and re-run this.
 
+    If you have already activated one there, macOS may be withholding it:
+    this tool is a separate binary from the app, so the first time it reads
+    the licence the system asks permission. Run it once from a Terminal
+    window you can see, and choose Always Allow. A run with no one watching
+    cannot answer that prompt, and lands here instead.
+
     \(License.purchaseURL.absoluteString)
     """)
     exit(3)
