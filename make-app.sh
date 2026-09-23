@@ -44,13 +44,47 @@ cp "$BINPATH/RollScrubApp" "$STAGE/Contents/MacOS/RollScrub"
 # own path on the customer's disk; inside Contents/MacOS it is covered by the
 # app's signature, stapled with the app, and updated by Sparkle along with it.
 # The app's "Install Command Line Tool" menu item symlinks it onto PATH.
-cp "$BINPATH/rollscrub" "$STAGE/Contents/MacOS/rollscrub"
+#
+# Named rollscrub-cli, not rollscrub, inside the bundle: the default macOS
+# volume is case-insensitive-but-case-preserving APFS, where "rollscrub" and
+# "RollScrub" (the app's own executable, staged just above) are the same
+# directory entry. Building the CLI under that name overwrote the app binary
+# with the CLI's bytes instead of creating a second file — lipo and codesign
+# still passed, since each was validating a real, validly signed binary, just
+# not the one intended; only actually running the result showed it, printing
+# the CLI's own --help instead of opening a window. The external command
+# stays "rollscrub" — CommandLineTool.swift symlinks /usr/local/bin/rollscrub
+# to this path, so nobody types the bundle name.
+cp "$BINPATH/rollscrub" "$STAGE/Contents/MacOS/rollscrub-cli"
+
+# The two cp calls above would collide silently if either name were ever
+# made case-equal to the other again, and nothing else would notice:
+# CommandLineTool's tests are pure string comparisons that pass whether the
+# on-disk name matches reality or not, and this rename lives in two
+# unconnected places (here and CommandLineTool.swift) that a future edit
+# could update only one of. Checked by name, not by comparing two hardcoded
+# paths' contents: a cmp between fixed filenames goes silently unreachable
+# the moment either name changes elsewhere and this guard is not updated to
+# match — cmp exits 2 for "no such file", which a bare `&&` does not
+# distinguish from "files differ", so the very half-revert this exists to
+# catch would make it pass. Lowercasing every actual filename present and
+# looking for a duplicate catches a collision regardless of what either
+# binary is currently called.
+MACOS_NAMES="$(find "$STAGE/Contents/MacOS" -type f -exec basename {} \;)"
+MACOS_FILE_COUNT="$(echo "$MACOS_NAMES" | grep -c .)"
+[ "$MACOS_FILE_COUNT" = "2" ] \
+  || { echo "error: Contents/MacOS should hold 2 files (RollScrub, rollscrub-cli)," \
+            "found $MACOS_FILE_COUNT — a name collision likely overwrote one" >&2; exit 1; }
+COLLIDING="$(echo "$MACOS_NAMES" | tr '[:upper:]' '[:lower:]' | sort | uniq -d)"
+[ -z "$COLLIDING" ] \
+  || { echo "error: two files in Contents/MacOS collide case-insensitively ($COLLIDING)" \
+            "— one silently overwrote the other" >&2; exit 1; }
 
 # Checked rather than assumed: a single-arch CLI inside a universal bundle
 # would run on this Mac and fail on the other architecture, and nothing else
 # in this script would notice.
 for slice in arm64 x86_64; do
-  lipo "$STAGE/Contents/MacOS/rollscrub" -verify_arch "$slice" \
+  lipo "$STAGE/Contents/MacOS/rollscrub-cli" -verify_arch "$slice" \
     || { echo "error: the CLI is missing the $slice slice" >&2; exit 1; }
 done
 
@@ -139,7 +173,7 @@ sign "$SPARKLE/XPCServices/Installer.xpc"
 sign "$SPARKLE/Updater.app"
 sign "$SPARKLE/Autoupdate"
 sign "$STAGE/Contents/Frameworks/Sparkle.framework"
-sign "$STAGE/Contents/MacOS/rollscrub" --identifier com.rollscrub.cli
+sign "$STAGE/Contents/MacOS/rollscrub-cli" --identifier com.rollscrub.cli
 sign "$STAGE" --identifier com.rollscrub.RollScrub
 
 if [ -n "$SIGN_IDENTITY" ]; then

@@ -19,9 +19,15 @@ enum CommandLineTool {
     /// Where the CLI lives inside this bundle. Resolved at runtime rather than
     /// hardcoded, because the app runs from /Applications, ~/Applications, or
     /// wherever someone dragged it.
+    ///
+    /// Named rollscrub-cli on disk, not rollscrub: the default macOS volume is
+    /// case-insensitive APFS, where "rollscrub" collides with the app's own
+    /// "RollScrub" executable in the same directory — the second file written
+    /// silently overwrites the first. The command stays "rollscrub" for
+    /// anyone typing it; only this internal path differs.
     static var bundledToolURL: URL? {
         let url = Bundle.main.bundleURL
-            .appendingPathComponent("Contents/MacOS/rollscrub")
+            .appendingPathComponent("Contents/MacOS/rollscrub-cli")
         return FileManager.default.isExecutableFile(atPath: url.path) ? url : nil
     }
 

@@ -9,7 +9,7 @@ import XCTest
 /// than discovered on somebody's machine.
 final class CommandLineToolTests: XCTestCase {
 
-    private let wanted = "/Applications/RollScrub.app/Contents/MacOS/rollscrub"
+    private let wanted = "/Applications/RollScrub.app/Contents/MacOS/rollscrub-cli"
 
     /// The case that must never become automatic. Someone's own `rollscrub` —
     /// built from source, installed by Homebrew, or an unrelated tool sharing
@@ -41,7 +41,7 @@ final class CommandLineToolTests: XCTestCase {
     /// Someone moved the app, or installed over an older copy. The link is
     /// ours and points somewhere wrong, so repointing it is the whole job.
     func testALinkToADifferentCopyIsRepointed() {
-        let old = "/Users/someone/Applications/RollScrub.app/Contents/MacOS/rollscrub"
+        let old = "/Users/someone/Applications/RollScrub.app/Contents/MacOS/rollscrub-cli"
         XCTAssertEqual(
             CommandLineTool.classify(
                 symlinkDestination: old, isSymlink: true, exists: true, wanted: wanted),
@@ -56,9 +56,9 @@ final class CommandLineToolTests: XCTestCase {
     func testALinkWhoseTargetIsGoneIsStillOursToRepoint() {
         XCTAssertEqual(
             CommandLineTool.classify(
-                symlinkDestination: "/Volumes/GoneAway/RollScrub.app/Contents/MacOS/rollscrub",
+                symlinkDestination: "/Volumes/GoneAway/RollScrub.app/Contents/MacOS/rollscrub-cli",
                 isSymlink: true, exists: false, wanted: wanted),
-            .staleSymlink(destination: "/Volumes/GoneAway/RollScrub.app/Contents/MacOS/rollscrub"))
+            .staleSymlink(destination: "/Volumes/GoneAway/RollScrub.app/Contents/MacOS/rollscrub-cli"))
     }
 
     /// A symlink we cannot read the destination of is still a symlink, and

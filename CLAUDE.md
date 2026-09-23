@@ -271,10 +271,33 @@ it — which reads as `error` on every activation.
   test mode did. Confirm both on the first real refund — a 100%-off order may
   not be refundable at all, so this one cannot be settled before a real sale.
 - Never gate undo.
+- **The CLI's file inside the bundle is named `rollscrub-cli`, not
+  `rollscrub`.** The default macOS volume is case-insensitive APFS, where
+  `rollscrub` and the app's own `RollScrub` executable are the same directory
+  entry — building the CLI into the bundle under that name overwrote the app
+  binary with the CLI's bytes instead of creating a second file. lipo and
+  codesign --verify still passed, since each was validating a real, validly
+  signed binary, just not the one intended. Caught two ways the same night,
+  through two different paths: run through `release.sh`, its developer-unlock
+  check (below) counts every file in `Contents/MacOS` and refuses under 2 —
+  a collision leaves only 1 — which stopped it before notarization. Run
+  through `make-app.sh` directly (as when reproducing this to debug it),
+  nothing stopped it, and only launching the installed result showed the
+  problem, printing the CLI's own `--help` instead of opening a window.
+  `make-app.sh` now checks for this directly, so a bare build is no longer
+  the unguarded path: every filename actually present in `Contents/MacOS` is
+  lowercased and checked for a duplicate, which catches a collision
+  regardless of what either binary is named at the time — a fixed
+  byte-comparison between two hardcoded paths was tried first and rejected,
+  since it goes silently unreachable the moment either name changes
+  elsewhere and the comparison is not updated to match. The external command
+  is still `rollscrub` — `CommandLineTool.swift` symlinks
+  `/usr/local/bin/rollscrub` to the renamed path, so nobody types the bundle
+  name.
 - **The CLI is a separate binary, so the keychain is not silently shared.**
-  It ships inside the bundle at `Contents/MacOS/rollscrub` and is signed with
-  its own identifier, `com.rollscrub.cli`. A macOS keychain item created by
-  `SecItemAdd` with no access group is ACL'd to the creating code signature
+  It ships inside the bundle at `Contents/MacOS/rollscrub-cli` and is signed
+  with its own identifier, `com.rollscrub.cli`. A macOS keychain item created
+  by `SecItemAdd` with no access group is ACL'd to the creating code signature
   alone, so the CLI's first read is expected to raise the system permission
   dialog rather than succeed silently — and a headless run, which is the
   CLI's whole purpose, cannot answer it. **Unverified on hardware**: confirm
