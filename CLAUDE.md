@@ -4,7 +4,7 @@ A macOS app and CLI that finds byte-identical duplicate photos and videos and
 sets them aside for review. Swift Package Manager; `RollScrubCore` holds the
 logic, `RollScrubApp` the SwiftUI app, `rollscrub` the CLI.
 
-Sold for $25 through Creem. Distributed directly — Developer ID signed,
+Sold for $19 through Creem. Distributed directly — Developer ID signed,
 notarized, updated through Sparkle from `rollscrub.com`. There is no App Store
 review standing between a mistake and a customer's photo library.
 
