@@ -5,11 +5,20 @@ import SwiftUI
 final class LicenseModel: ObservableObject {
     @Published var key = ""
     @Published private(set) var isPro = License.isPro()
+    /// Whether a real licence is stored, which is not the same question as
+    /// `isPro`: a debug build can be unlocked with no licence at all, and a
+    /// stored licence can fall outside the offline grace window.
+    @Published private(set) var isActivated = License.isActivated
     @Published private(set) var isWorking = false
     @Published var error: String?
 
+    /// Fixed for the life of the process — the environment does not change
+    /// under a running app — and always false in a release build.
+    let isDeveloperUnlocked = License.isDeveloperUnlocked
+
     func refreshFromStore() {
         isPro = License.isPro()
+        isActivated = License.isActivated
     }
 
     func activate() async {
@@ -20,7 +29,7 @@ final class LicenseModel: ObservableObject {
             _ = try await License.activate(key: key, deviceName: Host.current().localizedName
                 ?? "Mac")
             key = ""
-            isPro = License.isPro()
+            refreshFromStore()
         } catch {
             self.error = error.localizedDescription
         }
@@ -30,7 +39,7 @@ final class LicenseModel: ObservableObject {
         isWorking = true
         defer { isWorking = false }
         await License.deactivate()
-        isPro = License.isPro()
+        refreshFromStore()
     }
 
     /// Run at launch. Never blocks anything: a licence keeps working while the
@@ -38,7 +47,7 @@ final class LicenseModel: ObservableObject {
     func revalidateQuietly() {
         Task {
             await License.revalidate()
-            isPro = License.isPro()
+            refreshFromStore()
         }
     }
 }
@@ -61,15 +70,31 @@ struct LicenseView: View {
             }
 
             if model.isPro {
-                Label("Licence active", systemImage: "checkmark.seal.fill")
-                    .foregroundStyle(.green)
-                Button("Deactivate on This Mac") {
-                    Task { await model.deactivate() }
+                // Said plainly, because the alternative is a developer
+                // demonstrating the app from a debug build and believing they
+                // are looking at what a customer gets.
+                if model.isDeveloperUnlocked {
+                    Label("Developer unlock — debug build", systemImage: "hammer.fill")
+                        .foregroundStyle(.orange)
+                    Text(License.developerUnlockNotice)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .disabled(model.isWorking)
-                Text("Deactivating frees the slot so you can use it on another Mac.")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                // Guarded on the licence itself rather than on `isPro`: with
+                // only a developer unlock there is nothing to deactivate, and
+                // the button would report success having done nothing.
+                if model.isActivated {
+                    Label("Licence active", systemImage: "checkmark.seal.fill")
+                        .foregroundStyle(.green)
+                    Button("Deactivate on This Mac") {
+                        Task { await model.deactivate() }
+                    }
+                    .disabled(model.isWorking)
+                    Text("Deactivating frees the slot so you can use it on another Mac.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
             } else {
                 TextField("Licence key", text: $model.key)
                     .textFieldStyle(.roundedBorder)

@@ -42,6 +42,32 @@ APP="$DIST/RollScrub.app"
 INSTALLED="$(defaults read "$APP/Contents/Info.plist" CFBundleVersion)"
 [ "$INSTALLED" = "$BUILD" ] || die "built bundle reports build $INSTALLED, expected $BUILD"
 
+# The developer unlock (License.isDeveloperUnlocked) is debug-only, and
+# `swift build -c release` does not define DEBUG — so this should be
+# impossible. It is checked anyway because it is the one defect in this repo
+# that no test can catch and no amount of using the app would reveal: a
+# release carrying it gives the paid feature away to everyone, silently, and
+# looks exactly like a correct build. Proving the string is absent from the
+# binary costs a second.
+#
+# `grep -c` rather than `grep -q`: under `pipefail`, a quiet grep exits on the
+# first match, `strings` then dies of SIGPIPE, and the pipeline reports that
+# failure instead of the match — which would read as "clean" precisely when
+# the unlock is present. Counting reads all the input, so nothing is killed.
+#
+# The binary is read into a variable first, and the read is checked. Piping
+# `strings` straight into `grep -c || true` looks equivalent and is not: a
+# wrong path makes `strings` fail, `|| true` swallows it, grep counts zero,
+# and the check reports a clean build having examined nothing. A guard that
+# cannot fail is worse than no guard, because it is trusted.
+echo "==> checking the developer unlock is not in the build"
+UNLOCK_BIN="$APP/Contents/MacOS/RollScrub"
+[ -f "$UNLOCK_BIN" ] || die "no binary at $UNLOCK_BIN to check for the developer unlock"
+SYMBOLS="$(/usr/bin/strings -a "$UNLOCK_BIN")" || die "could not read strings from $UNLOCK_BIN"
+[ -n "$SYMBOLS" ] || die "no strings found in $UNLOCK_BIN — the unlock check proved nothing"
+LEAKED="$(printf '%s\n' "$SYMBOLS" | grep -c 'ROLLSCRUB_DEVELOPER_UNLOCK' || true)"
+[ "$LEAKED" = "0" ] || die "the developer unlock is compiled into this build; it must never ship"
+
 echo "==> notarizing"
 ./notarize.sh "$APP"
 

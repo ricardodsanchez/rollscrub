@@ -249,6 +249,30 @@ npx wrangler secret put CREEM_PRODUCT_ID
   that on the first real refund.
 - Never gate undo.
 
+**There is a developer unlock, and it is debug-only.** `ROLLSCRUB_DEVELOPER_UNLOCK=1`
+makes `License.isPro()` true in a debug build, so the paid path can be worked
+on without spending a real activation:
+
+```bash
+ROLLSCRUB_DEVELOPER_UNLOCK=1 swift run RollScrubApp
+```
+
+- It is `#if DEBUG` only, so `swift build -c release` does not compile it —
+  and `release.sh` greps the built binary for the variable's name and refuses
+  to notarize if it is there. That check is not belt-and-braces theatre: a
+  release carrying this ships the paid feature to everybody, and is
+  indistinguishable from a correct build by looking at it or using it.
+- It writes nothing to the keychain. A forged stored licence would outlive the
+  debug build that made it, would read as genuine, and the daily re-check
+  would ask Creem about a key that does not exist — whose answer is a
+  refusal, and refusals delete licences.
+- It must be exactly `1`. `swift test` runs in debug too, and a lenient
+  reading risks the whole suite running unlocked, asserting nothing about the
+  gate it exists to protect. `LicenseTests` pins this, and fails loudly if the
+  variable is set in the shell running the tests.
+- The licence window names it on screen, so a demo from a debug build cannot
+  be mistaken for what a customer gets.
+
 **Before opening the shop, swap the Creem test key for a live one.** Creem
 infers test or live from the key itself, and the proxy refuses test-mode keys
 at activation — so a live store running on a test key refuses every real

@@ -100,4 +100,44 @@ final class LicenseRecheckTests: XCTestCase {
     func testRechecksALicenceThatHasNeverBeenConfirmed() {
         XCTAssertTrue(License.shouldRecheck(state(validated: nil), now: epoch))
     }
+
+    // MARK: - Developer unlock
+
+    // These two reach for `developerUnlockVariable` and `developerUnlock(in:)`,
+    // which only exist when DEBUG is defined. `swift test` builds in debug, so
+    // an unguarded reference compiles today and would stop the *whole* target
+    // — all 77 tests — from building the first time anyone runs the suite in
+    // release configuration.
+    #if DEBUG
+
+    /// The unlock exists so the paid path can be exercised without a real key.
+    /// If it ever read as "on" for anything but the exact opt-in, every debug
+    /// build would quietly be a Pro build — and a developer would stop seeing
+    /// the locked app that customers actually get.
+    func testTheDeveloperUnlockNeedsTheExactOptIn() {
+        XCTAssertTrue(License.developerUnlock(in: ["ROLLSCRUB_DEVELOPER_UNLOCK": "1"]))
+
+        XCTAssertFalse(License.developerUnlock(in: [:]))
+        XCTAssertFalse(License.developerUnlock(in: ["ROLLSCRUB_DEVELOPER_UNLOCK": ""]))
+        XCTAssertFalse(License.developerUnlock(in: ["ROLLSCRUB_DEVELOPER_UNLOCK": "0"]))
+        XCTAssertFalse(License.developerUnlock(in: ["ROLLSCRUB_DEVELOPER_UNLOCK": "true"]))
+        XCTAssertFalse(License.developerUnlock(in: ["ROLLSCRUB_DEVELOPER_UNLOCK": " 1"]))
+    }
+
+    /// The name is what `release.sh` greps the shipped binary for. Changing it
+    /// in one place and not the other would leave a check that always passes.
+    func testTheUnlockVariableIsTheNameTheReleaseCheckLooksFor() {
+        XCTAssertEqual(License.developerUnlockVariable, "ROLLSCRUB_DEVELOPER_UNLOCK")
+    }
+
+    #endif
+
+    /// `swift test` builds in debug, so the unlock is compiled into this very
+    /// run. A suite that happened to run unlocked would assert nothing about
+    /// the gate it is here to protect.
+    func testTheSuiteIsNotItselfRunningUnlocked() {
+        XCTAssertFalse(
+            License.isDeveloperUnlocked,
+            "ROLLSCRUB_DEVELOPER_UNLOCK is set in this shell — unset it before running tests")
+    }
 }

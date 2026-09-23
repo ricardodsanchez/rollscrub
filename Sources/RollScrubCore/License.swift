@@ -80,10 +80,63 @@ public enum License {
     /// re-checked inside the grace window still counts, because the failure
     /// mode of being wrong here is taking away something already bought.
     public static func isPro(now: Date = Date()) -> Bool {
+        if isDeveloperUnlocked { return true }
         guard let state = stored() else { return false }
         guard let validated = state.lastValidated else { return true }
         return now.timeIntervalSince(validated) < offlineGrace
     }
+
+    // MARK: - Developer unlock
+
+    /// Unlocks removal in a **debug build** when `ROLLSCRUB_DEVELOPER_UNLOCK=1`
+    /// is set, so the paid path can be worked on without spending a real key.
+    ///
+    /// Always false in a release build: `swift build -c release` does not
+    /// define `DEBUG`, so the lookup below — and the variable's name with it —
+    /// is not compiled at all. `release.sh` then greps the built binary for
+    /// that name and refuses to ship if it is there, because a release that
+    /// carried this would hand the paid feature to everybody, and would look
+    /// no different from a correct one.
+    ///
+    /// It deliberately writes nothing to the keychain. A forged stored licence
+    /// would outlive the debug build that made it, would read as genuine in
+    /// the UI, and `revalidate()` would ask Creem about a key that does not
+    /// exist — whose answer is a refusal, which deletes licences.
+    public static var isDeveloperUnlocked: Bool {
+        #if DEBUG
+        return developerUnlock(in: ProcessInfo.processInfo.environment)
+        #else
+        return false
+        #endif
+    }
+
+    /// What to tell the developer, naming the variable so they can unset it.
+    ///
+    /// Lives here rather than in the view because the variable's name is one
+    /// of the strings that must not reach a release binary — `release.sh`
+    /// greps for it — so every mention of it belongs behind the same `#if`.
+    public static var developerUnlockNotice: String {
+        #if DEBUG
+        return "Removal is unlocked because \(developerUnlockVariable) is set. "
+            + "No licence is stored, and a release build ignores it entirely."
+        #else
+        return ""
+        #endif
+    }
+
+    #if DEBUG
+    static let developerUnlockVariable = "ROLLSCRUB_DEVELOPER_UNLOCK"
+
+    /// Split from the environment lookup so the rule can be tested without
+    /// mutating the test process's own environment.
+    ///
+    /// Exactly `"1"`, and nothing else. `swift test` runs in debug too, so a
+    /// lenient reading here — anything non-empty, say — would risk the whole
+    /// suite running unlocked and never again seeing what a customer sees.
+    static func developerUnlock(in environment: [String: String]) -> Bool {
+        environment[developerUnlockVariable] == "1"
+    }
+    #endif
 
     // MARK: - What the server told us
 
