@@ -672,8 +672,7 @@
           </p>
         </div>
         <div class="panel">
-          <div class="cmt"># one sweep across everything</div>
-          <div><span class="hl">rollscrub</span> ~/Pictures "/Volumes/Extreme Pro" ~/Library/Mobile\ Documents</div>
+          <div class="cmt"># one sweep: Pictures, an external drive and iCloud Drive</div>
           <div>&nbsp;</div>
           <div>Media files scanned : 48,207</div>
           <div>Duplicate groups    : 1,904</div>
@@ -771,36 +770,6 @@
         <h3>Photo libraries stay sealed</h3>
         <p>Photos, Lightroom, Aperture and Final Cut libraries keep your originals and their own generated copies together under a database. Removing one leaves the app pointing at a file that isn't there, so RollScrub never looks inside.</p>
       </div>
-      <div class="guard">
-        <span class="mono-flag">Reversible</span>
-        <h3>Undo, from a manifest</h3>
-        <p>The command-line tool writes a manifest of everything it set aside, and puts every file back where it came from with a single <span style="font-family:var(--mono);font-size:12.5px">--undo</span>.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section>
-  <div class="wrap">
-    <div class="section-head">
-      <div class="eyebrow">For large sweeps</div>
-      <h2>There's a command-line tool in the box.</h2>
-      <p>
-        For drives with hundreds of thousands of files, or a sweep you want to run on a
-        schedule. It writes a text report and a CSV, and with <span style="font-family:var(--mono);font-size:15px">--move</span>
-        it sets duplicates aside in a review folder <em>inside whichever drive each was found on</em>
-        — so nothing has to cross a volume boundary, and nothing is deleted.
-      </p>
-    </div>
-    <div class="panel">
-      <div class="cmt"># read-only by default: writes a report, touches nothing</div>
-      <div><span class="hl">rollscrub</span> "/Volumes/Extreme Pro" --out ~/Desktop/sweep.txt</div>
-      <div>&nbsp;</div>
-      <div class="cmt"># set duplicates aside, reversibly</div>
-      <div><span class="hl">rollscrub</span> ~/Pictures "/Volumes/Extreme Pro" <span class="mark">--move</span></div>
-      <div>&nbsp;</div>
-      <div class="cmt"># changed your mind</div>
-      <div><span class="hl">rollscrub</span> <span class="ok">--undo</span> "/Volumes/Extreme Pro/_duplicates_review/_rollscrub_manifest_20260912-014500.json"</div>
     </div>
   </div>
 </section>
@@ -833,7 +802,6 @@
         <ul>
           <li>Everything in Free</li>
           <li>Move duplicates to the Trash in bulk</li>
-          <li>Command-line <span style="font-family:var(--mono);font-size:13px">--move</span> for scripted sweeps</li>
           <li>Use it on up to 3 Macs</li>
           <li>Free updates to every 1.x release</li>
         </ul>
@@ -881,7 +849,7 @@
       </details>
       <details>
         <summary>What if it's wrong?</summary>
-        <p>Nothing is deleted. Files go to the Trash, where you can put them back from the Finder. The command-line tool goes further — it moves files into a review folder and writes a manifest, so a single <span style="font-family:var(--mono);font-size:14px">--undo</span> puts every one of them back exactly where it was.</p>
+        <p>Nothing is deleted. Files go to the Trash, where you can put them back from the Finder — and every file is re-verified against the copy being kept immediately before it moves, so a pair that has changed since the scan is left alone.</p>
       </details>
       <details>
         <summary>How long does a scan take?</summary>
@@ -889,13 +857,13 @@
       </details>
       <details>
         <summary>What does a licence cover?</summary>
-        <p>One purchase, used on up to three Macs at a time — and you can move an activation between machines whenever you like by deactivating one. It unlocks moving duplicates to the Trash, in the app and in the command-line tool.</p>
+        <p>One purchase, used on up to three Macs at a time — and you can move an activation between machines whenever you like by deactivating one. It unlocks moving duplicates to the Trash.</p>
         <p>Every 1.x update is included. If there is ever a paid 2.0, your copy keeps working exactly as it does now — nothing expires and nothing stops functioning.</p>
         <p>Scanning, reviewing pairs, the reports, and undo are free forever and always will be. You can see everything RollScrub found before deciding whether it is worth paying for.</p>
       </details>
       <details>
         <summary>How do I activate my licence key?</summary>
-        <p>Your key arrives in the email from your purchase, and is also on your order page. In RollScrub, choose <strong>RollScrub → Unlock Removal</strong> from the menu bar, paste the key, and that's it. The command-line tool reads the same licence, so activating in the app covers both.</p>
+        <p>Your key arrives in the email from your purchase, and is also on your order page. In RollScrub, choose <strong>RollScrub → Unlock Removal</strong> from the menu bar, paste the key, and that's it.</p>
       </details>
       <details>
         <summary>What happens when I get a new Mac?</summary>
