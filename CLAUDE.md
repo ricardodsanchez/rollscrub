@@ -190,6 +190,21 @@ npx wrangler secret put CREEM_API_KEY
 npx wrangler secret put CREEM_PRODUCT_ID
 ```
 
+**Both secrets must come from the same Creem mode, and for a real shop both
+must be live.** Test and live are separate environments: a product created in
+test mode has a different `prod_…` id, and that id does not exist as far as a
+live key is concerned. Mixing them fails in the most confusing direction
+available — Creem answers 404 for a product the key cannot see, the proxy
+turns an unrecognised answer into `error`, and `error` is indistinguishable
+from Creem being down. Swap them together, then deploy.
+
+`wrangler secret put` refuses while the Worker's newest uploaded version is
+not the deployed one ("the latest version of your Worker isn't currently
+deployed"). Deploy first, then set the secret. Do **not** reach for
+`wrangler versions secret put` to get around it: that writes the secret into a
+new *undeployed* version, reports success, and leaves the live Worker without
+it — which reads as `error` on every activation.
+
 - **Only an explicit server refusal may revoke a licence.** A timeout, a 500,
   a rotated API key or a missing network must never lock someone out of
   software they bought; that is what the 30-day offline grace is for.
@@ -241,13 +256,56 @@ npx wrangler secret put CREEM_PRODUCT_ID
   every launch. The grace window is thirty days; spending a customer's network
   and Creem's rate limit dozens of times a day to re-learn the same answer
   buys nothing.
+- **Activation and the daily re-check are verified against live Creem**,
+  23 September 2026: a real key passes the product-id and live-mode checks,
+  and `validate` returns `ok` — so Creem shapes `status` and `instance.status`
+  in its validate reply the way `license.js` reads them. Worth having checked:
+  had it differed, every re-check would answer `error`, which changes nothing
+  for thirty days and then locks out every paying customer at once. The
+  removal half of `/license/deactivate` is still unexercised live.
 - **A refund revokes.** Verified on a test purchase, 22 September 2026: after
   refunding, Creem shows the licence as `inactive`, which the proxy already
   treats as dead — so the app drops back to locked on its next daily
-  re-check. No webhook is needed for this. The one thing still taken on
-  trust is that the API reports the same word the dashboard displays; confirm
-  that on the first real refund.
+  re-check. No webhook is needed for this. Still taken on trust: that the API
+  reports the same word the dashboard displays, and that live mode behaves as
+  test mode did. Confirm both on the first real refund — a 100%-off order may
+  not be refundable at all, so this one cannot be settled before a real sale.
 - Never gate undo.
+
+**A junk-key smoke test proves less than it looks like.** This is the check
+worth running after any secret or deploy change:
+
+```bash
+curl -s -X POST https://rollscrub.com/license/activate \
+  -H 'content-type: application/json' \
+  -d '{"key":"definitely-not-a-key","instance_name":"smoke test"}'
+```
+
+`{"verdict":"refused",…}` means both secrets are non-empty and Creem answered
+— an empty secret returns `error` with a 503 before Creem is called, and a
+wrong API key gets a 403 that also becomes `error`. But it says **nothing**
+about whether `CREEM_PRODUCT_ID` is right: that refusal comes from the
+`!response.ok` branch on Creem's 404, which returns before the `product_id`
+comparison is ever reached. A stale test-mode id passes this test. Only a real
+key through a real checkout settles it.
+
+**Checking the re-check path by hand:** the keychain item spells the field
+`instanceID` (the Swift property name, via `Codable`'s default keys) while the
+route expects `instance_id`. Hand it the Swift spelling — or a licence id,
+which is a different thing from the activation's instance id — and the reply
+is `error`, which looks exactly like the failure being tested for.
+
+```bash
+security find-generic-password -s RollScrub -a com.rollscrub.license -w \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps({"key":d["key"],"instance_id":d["instanceID"]}))' \
+  | curl -s -X POST https://rollscrub.com/license/validate \
+      -H 'content-type: application/json' --data-binary @-
+```
+
+`error` is deliberately the same envelope for a missing secret, an unreachable
+Creem, a rate-limit trip and a malformed request — right for the app, unhelpful
+for diagnosis. It never says *which* thing went wrong, only that nothing was
+concluded.
 
 **There is a developer unlock, and it is debug-only.** `ROLLSCRUB_DEVELOPER_UNLOCK=1`
 makes `License.isPro()` true in a debug build, so the paid path can be worked
