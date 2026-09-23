@@ -60,15 +60,27 @@ INSTALLED="$(defaults read "$APP/Contents/Info.plist" CFBundleVersion)"
 # unreadable or empty binary matches no pattern and would otherwise report a
 # clean build having examined nothing — a guard that cannot fail is worse than
 # no guard, because it is trusted.
+#
+# Every executable in the bundle, not one named binary: the CLI links
+# RollScrubCore too, so it carries the same gate, and it is the CLI that
+# offers --move. A check hardcoded to the app would have reported a clean
+# release while handing the paid feature away on the command line.
 echo "==> checking the developer unlock is not in the build"
-UNLOCK_BIN="$APP/Contents/MacOS/RollScrub"
-[ -f "$UNLOCK_BIN" ] || die "no binary at $UNLOCK_BIN to check for the developer unlock"
-SYMBOLS="$(/usr/bin/strings -a "$UNLOCK_BIN")" || die "could not read strings from $UNLOCK_BIN"
-[ -n "$SYMBOLS" ] || die "no strings found in $UNLOCK_BIN — the unlock check proved nothing"
-case "$SYMBOLS" in
-  *ROLLSCRUB_DEVELOPER_UNLOCK*)
-    die "the developer unlock is compiled into this build; it must never ship" ;;
-esac
+UNLOCK_CHECKED=0
+for UNLOCK_BIN in "$APP/Contents/MacOS/"*; do
+  [ -f "$UNLOCK_BIN" ] || continue
+  SYMBOLS="$(/usr/bin/strings -a "$UNLOCK_BIN")" || die "could not read strings from $UNLOCK_BIN"
+  [ -n "$SYMBOLS" ] || die "no strings in $UNLOCK_BIN — the unlock check proved nothing"
+  case "$SYMBOLS" in
+    *ROLLSCRUB_DEVELOPER_UNLOCK*)
+      die "the developer unlock is compiled into $UNLOCK_BIN; it must never ship" ;;
+  esac
+  UNLOCK_CHECKED=$((UNLOCK_CHECKED + 1))
+done
+# A glob that matched nothing leaves the loop body unrun, and silence would
+# read as success — the failure this whole check exists to rule out.
+[ "$UNLOCK_CHECKED" -ge 2 ] \
+  || die "expected the app and the CLI in Contents/MacOS, checked $UNLOCK_CHECKED"
 
 echo "==> notarizing"
 ./notarize.sh "$APP"
