@@ -96,8 +96,30 @@ function classify(pathname, request) {
   if (pathname === "/" || pathname === "/index.html") {
     return { kind: "pageview", name: "/" };
   }
+  if (pathname === "/thanks") {
+    // Only the extensionless path: the asset handler's default html_handling
+    // redirects /thanks.html to /thanks, and with run_worker_first this
+    // Worker runs on both the original request and the redirected one, so
+    // matching both paths here would count one visit twice. Every other link
+    // on the site (changelog, privacy, terms) already points at the
+    // extensionless form, so Creem's own success URL is almost certainly
+    // this one — but if it were ever set to the .html form, that one hit
+    // would go uncounted rather than double-counted, which is the safer
+    // direction to be wrong in.
+    //
+    // Reached only after Creem sends a buyer back here, so a view here is the
+    // closest thing to a confirmed sale this site can see without a webhook —
+    // a proxy, not a ledger: nothing here confirms the payment actually
+    // captured, only that the browser landed on the page Creem redirects to.
+    return { kind: "purchase", name: "thanks" };
+  }
   return null;
 }
+
+// Creem's own checkout URL, kept as a redirect target rather than linked to
+// directly so a click can be counted before the browser leaves the site —
+// there is no page load on rollscrub.com after this to count it from.
+const BUY_URL = "https://www.creem.io/payment/prod_53G0PoiZ59pjRrJKuXN6Rj";
 
 async function record(env, event, request) {
   if (!env.STATS) return; // binding absent: never break serving over telemetry
@@ -125,74 +147,6 @@ function esc(value) {
     /[&<>"']/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
   );
-}
-
-// ---------- notify list ----------
-
-/// Deliberately loose. The job is to catch a typo or a stray form post, not to
-/// adjudicate RFC 5322 — a real address that a strict pattern rejects is a
-/// customer turned away, which costs far more than a junk row.
-function looksLikeEmail(value) {
-  return typeof value === "string"
-    && value.length >= 6 && value.length <= 254
-    && /^[^\s@]+@[^\s@.]+\.[^\s@]+$/.test(value);
-}
-
-const NOTIFY_TABLE = `CREATE TABLE IF NOT EXISTS notify (
-  email TEXT PRIMARY KEY, day TEXT NOT NULL, country TEXT NOT NULL)`;
-
-async function addToNotifyList(env, email, request) {
-  const insert = () =>
-    env.STATS.prepare(
-      `INSERT INTO notify (email, day, country) VALUES (?, ?, ?)
-       ON CONFLICT(email) DO NOTHING`
-    )
-      .bind(email.toLowerCase(), DAY(), request.cf?.country ?? "??")
-      .run();
-
-  try {
-    await insert();
-  } catch (error) {
-    // The table is created here rather than by a migration so that deploying
-    // the Worker is all it takes; the alternative is a form that silently
-    // fails until someone remembers to run wrangler.
-    if (!/no such table/i.test(String(error))) throw error;
-    await env.STATS.prepare(NOTIFY_TABLE).run();
-    await insert();
-  }
-}
-
-async function notify(request, env) {
-  if (request.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
-  }
-  const type = request.headers.get("content-type") ?? "";
-  const body = type.includes("application/json")
-    ? await request.json().catch(() => ({}))
-    : Object.fromEntries(await request.formData().catch(() => new FormData()));
-
-  const wantsJSON = (request.headers.get("accept") ?? "").includes("application/json");
-  const reply = (ok, message, status = ok ? 200 : 400) =>
-    wantsJSON
-      ? Response.json({ ok, message }, { status })
-      : html(`<h1>${ok ? "You're on the list" : "That didn't work"}</h1>
-              <p>${esc(message)}</p><p><a href="/">Back to RollScrub</a></p>`,
-             { status });
-
-  // A field no person sees and every naive bot fills in.
-  if (body.company) return reply(true, "Thanks — we'll be in touch.");
-
-  if (!looksLikeEmail(body.email)) {
-    return reply(false, "That doesn't look like an email address. Try again?");
-  }
-  if (!env.STATS) return reply(false, "The list isn't available right now.");
-
-  try {
-    await addToNotifyList(env, body.email, request);
-  } catch {
-    return reply(false, "Something went wrong saving that. Try again in a minute.");
-  }
-  return reply(true, "Thanks — you'll get one email when the shop opens, and nothing else.");
 }
 
 function html(body, init = {}) {
@@ -244,16 +198,13 @@ async function stats(request, env) {
     `SELECT name, SUM(count) AS n FROM events WHERE kind = 'update-check'
      GROUP BY name ORDER BY n DESC`
   ).all();
-  // Tolerates the table not existing yet: the stats page must still render
-  // before anyone has ever signed up.
-  const waiting = await env.STATS.prepare(
-    `SELECT email, day, country FROM notify ORDER BY day DESC, email`
-  ).all().catch(() => ({ results: [] }));
 
   const daily = await env.STATS.prepare(
     `SELECT day,
             SUM(CASE WHEN kind = 'pageview' THEN count ELSE 0 END) AS views,
             SUM(CASE WHEN kind = 'download' THEN count ELSE 0 END) AS downloads,
+            SUM(CASE WHEN kind = 'buy-click' THEN count ELSE 0 END) AS buys,
+            SUM(CASE WHEN kind = 'purchase' THEN count ELSE 0 END) AS purchases,
             SUM(CASE WHEN kind = 'update-check' THEN count ELSE 0 END) AS checks
      FROM events GROUP BY day ORDER BY day DESC LIMIT 30`
   ).all();
@@ -270,11 +221,19 @@ async function stats(request, env) {
   // worth watching.
   const views = total("pageview");
   const downloads = total("download");
+  const buyClicks = total("buy-click");
+  const purchases = total("purchase");
   const botViews = total("pageview-bot");
   const botDownloads = total("download-bot");
   // The number the page is actually for: of everyone who read it, how many
   // wanted the app enough to fetch it.
   const rate = views ? `${((downloads / views) * 100).toFixed(1)}%` : "—";
+  // "Bought" here means "clicked Buy" — Creem, not this site, knows whether
+  // the card actually went through, and there's no webhook wired up to ask.
+  // buyRate is the honest number; checkoutRate is only a rough proxy on top
+  // of it, and can read over 100% (see the caveat printed below it).
+  const buyRate = views ? `${((buyClicks / views) * 100).toFixed(1)}%` : "—";
+  const checkoutRate = buyClicks ? `${((purchases / buyClicks) * 100).toFixed(0)}%` : "—";
   const noise = views + botViews
     ? `${((botViews / (views + botViews)) * 100).toFixed(0)}%`
     : "—";
@@ -287,20 +246,22 @@ async function stats(request, env) {
   <div><div class="big">${rate}</div><div class="muted">of readers download</div></div>
   <div><div class="big">${total("update-check")}</div><div class="muted">update checks</div></div>
 </div>
+<div class="row">
+  <div><div class="big">${buyClicks}</div><div class="muted">Buy clicks</div></div>
+  <div><div class="big">${buyRate}</div><div class="muted">of readers click Buy</div></div>
+  <div><div class="big">${purchases}</div><div class="muted">reached /thanks</div></div>
+  <div><div class="big">${checkoutRate}</div><div class="muted">of Buy clicks finish checkout</div></div>
+</div>
 <p class="muted">Counts above are requests that looked like a browser. Set aside as
 automated: <strong>${botViews}</strong> page views and <strong>${botDownloads}</strong>
 downloads &mdash; ${noise} of all traffic. Judged from the user agent alone, which is
 forgeable, so read it as a floor on the noise rather than a measurement of it.</p>
-
-<h2>Waiting for the shop to open (${waiting.results.length})</h2>
-<table><tr><th>Email</th><th>Signed up</th><th>From</th></tr>
-${rows(waiting, [
-  (r) => `<td>${esc(r.email)}</td>`,
-  (r) => `<td>${esc(r.day)}</td>`,
-  (r) => `<td>${esc(r.country)}</td>`,
-])}</table>
-<p class="muted">Mail these once, when the shop opens, then delete the list —
-it has one purpose and no reason to outlive it.</p>
+<p class="muted">"Reached /thanks" counts browsers landing on the page Creem
+sends buyers back to — the closest thing to a sale count this site can see
+without a webhook. It is a proxy, not a ledger: it can run <em>higher</em>
+than actual sales, since a buyer reloading the page or returning to it (it
+carries its own download link) counts again each time, and it never runs
+lower for a refund, since nothing here hears about those either.</p>
 
 <h2>Where readers come from</h2>
 <table><tr><th>Source</th><th class="n">Visits</th></tr>
@@ -319,11 +280,14 @@ ${rows(files, [(r) => `<td>${esc(r.name)}</td>`, (r) => `<td class="n">${r.n}</t
 ${rows(countries, [(r) => `<td>${esc(r.country)}</td>`, (r) => `<td class="n">${r.n}</td>`])}</table>
 
 <h2>Last 30 days</h2>
-<table><tr><th>Day</th><th class="n">Views</th><th class="n">Downloads</th><th class="n">Update checks</th></tr>
+<table><tr><th>Day</th><th class="n">Views</th><th class="n">Downloads</th>
+<th class="n">Buy clicks</th><th class="n">/thanks</th><th class="n">Update checks</th></tr>
 ${rows(daily, [
   (r) => `<td>${r.day}</td>`,
   (r) => `<td class="n">${r.views}</td>`,
   (r) => `<td class="n">${r.downloads}</td>`,
+  (r) => `<td class="n">${r.buys}</td>`,
+  (r) => `<td class="n">${r.purchases}</td>`,
   (r) => `<td class="n">${r.checks}</td>`,
 ])}</table>
 
@@ -337,7 +301,20 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/stats") return stats(request, env);
-    if (url.pathname === "/notify") return notify(request, env);
+
+    if (url.pathname === "/buy") {
+      // Only a GET is a click landing here; HEAD comes from link checkers
+      // and unfurlers with otherwise browser-shaped user agents, and
+      // recording it would sit the same tally next to page views and
+      // downloads, which both already exclude it.
+      if (request.method === "GET") {
+        const automated = looksAutomated(request);
+        ctx.waitUntil(
+          record(env, { kind: automated ? "buy-click-bot" : "buy-click", name: "buy" }, request)
+        );
+      }
+      return Response.redirect(BUY_URL, 302);
+    }
 
     // The app's licence calls. Proxied rather than made direct because the
     // Creem API key cannot ship inside a downloadable binary; see license.js.
