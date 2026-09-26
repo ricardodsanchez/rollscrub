@@ -116,10 +116,11 @@ function classify(pathname, request) {
   return null;
 }
 
-// Creem's own checkout URL, kept as a redirect target rather than linked to
-// directly so a click can be counted before the browser leaves the site —
-// there is no page load on rollscrub.com after this to count it from.
-const BUY_URL = "https://www.creem.io/payment/prod_53G0PoiZ59pjRrJKuXN6Rj";
+// Creem's checkout, served on our own domain (buy. is a DNS-only CNAME to
+// Creem). Kept as a redirect target rather than linked to directly so a click
+// can be counted before the browser leaves the site — there is no page load
+// on rollscrub.com after this to count it from.
+const BUY_URL = "https://buy.rollscrub.com/payment/prod_53G0PoiZ59pjRrJKuXN6Rj";
 
 async function record(env, event, request) {
   if (!env.STATS) return; // binding absent: never break serving over telemetry
