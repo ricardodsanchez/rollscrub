@@ -228,7 +228,7 @@ guard License.isPro() else {
     window you can see, and choose Always Allow. A run with no one watching
     cannot answer that prompt, and lands here instead.
 
-    \(License.purchaseURL.absoluteString)
+    \(License.purchaseURL(from: .cli).absoluteString)
     """)
     exit(3)
 }

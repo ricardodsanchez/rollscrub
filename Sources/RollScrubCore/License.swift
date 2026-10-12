@@ -19,7 +19,24 @@ public enum License {
     /// Removing files is the paid action. Scanning, reviewing and the reports
     /// are free forever, so anyone can see exactly what RollScrub found before
     /// deciding whether it is worth paying for.
-    public static let purchaseURL = URL(string: "https://rollscrub.com/#pricing")!
+    ///
+    /// Both the app and the CLI send people to `/buy`, which counts the click
+    /// and redirects straight to checkout. They used to send them to the
+    /// site's pricing section, which meant a second Buy click on the way to
+    /// checkout, and every in-app click was counted as a site click.
+    /// `ref` is what lets the stats page tell the three apart; the Worker
+    /// only accepts the values `PurchaseEntry` spells.
+    public enum PurchaseEntry: String {
+        case app, cli
+    }
+
+    public static func purchaseURL(from entry: PurchaseEntry) -> URL {
+        URL(string: "https://rollscrub.com/buy?ref=\(entry.rawValue)")!
+    }
+
+    /// Shown in the unlock window. Has to match the Creem product, and a
+    /// price change needs a release to reach it.
+    public static let displayPrice = "$19"
 
     static let endpoint = URL(string: "https://rollscrub.com/license/")!
 
@@ -70,6 +87,28 @@ public enum License {
         // A clock that has gone backwards — a timezone fix, a dead battery —
         // must not park a licence in a state that never re-checks again.
         return !(0..<recheckInterval).contains(now.timeIntervalSince(validated))
+    }
+
+    /// Whether the app's automatic check should send a request now.
+    ///
+    /// Two things have to be true. The licence must be due (`shouldRecheck`),
+    /// and the last attempt must be at least a day old. The second is what
+    /// stops an open window from calling every hour while the server is
+    /// unreachable, since a failed check leaves the licence due.
+    ///
+    /// The caller records an attempt only when this says yes. Recording one
+    /// for a wake on which the licence was not yet due spends the day's
+    /// attempt on nothing, and the next real check lands two days out.
+    static func automaticCheckIsDue(_ state: State, lastAttempt: Date?, now: Date) -> Bool {
+        guard shouldRecheck(state, now: now) else { return false }
+        guard let lastAttempt else { return true }
+        // A clock that has gone backwards counts as due, as in `shouldRecheck`.
+        return !(0..<recheckInterval).contains(now.timeIntervalSince(lastAttempt))
+    }
+
+    public static func automaticCheckIsDue(lastAttempt: Date?, now: Date = Date()) -> Bool {
+        guard let state = stored() else { return false }
+        return automaticCheckIsDue(state, lastAttempt: lastAttempt, now: now)
     }
 
     public static var isActivated: Bool {
@@ -170,6 +209,20 @@ public enum License {
         }
     }
 
+    // MARK: - Which licence a reply is about
+
+    /// Whether the licence a request was about is still the one stored.
+    ///
+    /// A re-check can take up to twenty seconds, and in that time the person
+    /// may activate a different key or deactivate. A reply that lands
+    /// afterwards describes a licence that is no longer here: acting on it
+    /// would either delete the new one (on a refusal) or write the old one
+    /// back over it (on a confirmation). So it changes nothing.
+    static func isStillStored(_ checked: State, current: State?) -> Bool {
+        guard let current else { return false }
+        return current.key == checked.key && current.instanceID == checked.instanceID
+    }
+
     // MARK: - Activation
 
     public static func activate(key raw: String, deviceName: String) async throws -> State {
@@ -215,14 +268,17 @@ public enum License {
         switch verdict(from: json) {
         case .ok:
             // Another copy of the app, or the person hitting Deactivate, may
-            // have forgotten this licence while the request was in flight.
-            // Writing unconditionally would resurrect it for another day.
-            guard stored() != nil else { return }
+            // have forgotten this licence while the request was in flight, or
+            // replaced it with a new activation. Writing unconditionally would
+            // resurrect the old one, or overwrite the new one with it.
+            guard isStillStored(state, current: stored()) else { return }
             state.lastValidated = Date()
             try? store(state)
         case .refused:
             // Refunded, revoked, or this Mac's activation removed elsewhere.
-            forget()
+            // Only if it is still the licence that was asked about: a key
+            // activated while this request was in flight is not the one refused.
+            if isStillStored(state, current: stored()) { forget() }
         case .cannotTell:
             break  // change nothing
         }

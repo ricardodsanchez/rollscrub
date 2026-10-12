@@ -44,7 +44,18 @@ struct RollScrubApp: App {
     var body: some Scene {
         Window("RollScrub Review", id: "review") {
             ContentView(session: session, license: license)
-                .task { license.revalidateQuietly() }
+                .task {
+                    // At launch, then an hourly wake for as long as the window
+                    // is open. revalidateQuietly() reaches the network at most
+                    // once a day whatever the outcome, so the wake costs a
+                    // keychain read; it is what lets a session left open for
+                    // weeks notice a refund or the end of the grace window
+                    // instead of waiting for a relaunch.
+                    while !Task.isCancelled {
+                        license.revalidateQuietly()
+                        try? await Task.sleep(for: .seconds(60 * 60))
+                    }
+                }
         }
         .windowToolbarStyle(.unified)
         .commands {
@@ -72,6 +83,7 @@ struct RollScrubApp: App {
                 Divider()
 
                 Button(license.isPro ? "Licence…" : "Unlock Removal…") {
+                    license.unlockContext = nil
                     openWindow(id: "license")
                 }
 

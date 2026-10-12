@@ -140,4 +140,129 @@ final class LicenseRecheckTests: XCTestCase {
             License.isDeveloperUnlocked,
             "ROLLSCRUB_DEVELOPER_UNLOCK is set in this shell — unset it before running tests")
     }
+
+    /// Buy has to land on `/buy`, the route that counts the click and
+    /// redirects to checkout. Anywhere else on the site and the buyer needs a
+    /// second click to reach checkout, and the stats page never hears about
+    /// it. The `ref` values must match the ones `buySource` in
+    /// worker/index.js accepts, or every click is filed as "site".
+    func testBuyGoesStraightToCheckoutAndSaysWhereItCameFrom() {
+        let app = URLComponents(url: License.purchaseURL(from: .app), resolvingAgainstBaseURL: false)
+        let cli = URLComponents(url: License.purchaseURL(from: .cli), resolvingAgainstBaseURL: false)
+
+        XCTAssertEqual(app?.host, "rollscrub.com")
+        XCTAssertEqual(app?.path, "/buy")
+        XCTAssertEqual(app?.queryItems, [URLQueryItem(name: "ref", value: "app")])
+        XCTAssertEqual(cli?.path, "/buy")
+        XCTAssertEqual(cli?.queryItems, [URLQueryItem(name: "ref", value: "cli")])
+    }
+}
+
+/// Which licence a re-check's reply is about. The keychain can change while
+/// the request is in flight, and acting on the wrong licence either deletes
+/// one somebody just paid for or writes a stale one back over it.
+final class LicenseReplacementTests: XCTestCase {
+
+    private func state(_ key: String, _ instance: String) -> License.State {
+        License.State(key: key, instanceID: instance, lastValidated: nil)
+    }
+
+    /// The everyday case: the reply is about the licence on this Mac, so a
+    /// refusal must still revoke it. If this failed, refunds would never lock.
+    func testActsOnAReplyAboutTheLicenceStillStored() {
+        let s = state("K", "inst_1")
+        XCTAssertTrue(License.isStillStored(s, current: s))
+    }
+
+    /// A re-check of the old activation lands after the person deactivated
+    /// and activated another key. Acting on it would delete the fresh licence
+    /// on a refusal, or write the stale one back over it on a confirmation.
+    func testIgnoresAReplyAboutAnActivationThatHasSinceBeenReplaced() {
+        XCTAssertFalse(License.isStillStored(state("K", "inst_1"), current: state("K", "inst_2")))
+    }
+
+    /// Same instance id under a different key is a different licence, however
+    /// unlikely, and must not be treated as the one that was checked.
+    func testIgnoresAReplyWhenTheKeyHasChanged() {
+        XCTAssertFalse(License.isStillStored(state("K", "inst_1"), current: state("J", "inst_1")))
+    }
+
+    /// Deactivated while the check was in flight: a confirmation arriving now
+    /// would bring the licence back for another day.
+    func testIgnoresAReplyAfterTheLicenceWasRemoved() {
+        XCTAssertFalse(License.isStillStored(state("K", "inst_1"), current: nil))
+    }
+}
+
+/// When an open window sends its automatic re-check. The window wakes every
+/// hour; these walk those wakes with an injected clock.
+final class LicenseAutomaticCheckTests: XCTestCase {
+
+    private let hour: TimeInterval = 60 * 60
+    private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+
+    /// The hours after `t0` at which a request goes out, recording an attempt
+    /// only then, as `LicenseModel.revalidateQuietly` does.
+    private func wakesThatSend(_ state: License.State, lastAttempt: Date?, hours: Int) -> [Int] {
+        var lastAttempt = lastAttempt
+        var sent: [Int] = []
+        for h in 1...hours {
+            let now = t0.addingTimeInterval(Double(h) * hour)
+            guard License.automaticCheckIsDue(state, lastAttempt: lastAttempt, now: now) else {
+                continue
+            }
+            // A wake that claims the day's attempt while the licence is not
+            // due sends nothing, and that is how the check slipped to 46h.
+            XCTAssertTrue(License.shouldRecheck(state, now: now), "attempt spent at hour \(h)")
+            lastAttempt = now
+            sent.append(h)
+        }
+        return sent
+    }
+
+    /// A window left open after a successful check must ask again about a day
+    /// later. If this slips, a refunded licence keeps removing files for an
+    /// extra day in any session that is never relaunched.
+    func testAnOpenWindowChecksAgainADayAfterASuccessNotTwo() {
+        // Confirmed a couple of seconds after the attempt began, as in life.
+        let state = License.State(
+            key: "K", instanceID: "inst_1", lastValidated: t0.addingTimeInterval(2))
+        XCTAssertEqual(wakesThatSend(state, lastAttempt: t0, hours: 40), [25])
+    }
+
+    /// The server is unreachable, so the licence stays due on every wake. The
+    /// proxy forwards to an API we are billed on and rate limited by: an open
+    /// window must not call it every hour for as long as the outage lasts.
+    func testAnUnreachableServerIsAskedOnceADayNotEveryHour() {
+        let stale = License.State(
+            key: "K", instanceID: "inst_1", lastValidated: t0.addingTimeInterval(-3 * 24 * hour))
+        XCTAssertEqual(wakesThatSend(stale, lastAttempt: t0, hours: 50), [24, 48])
+    }
+
+    /// Launch: nothing has been attempted yet in this process, so a licence
+    /// that is due is checked at once rather than a day into the session.
+    func testTheFirstCheckAfterLaunchIsNotHeldBack() {
+        let stale = License.State(
+            key: "K", instanceID: "inst_1", lastValidated: t0.addingTimeInterval(-2 * 24 * hour))
+        XCTAssertTrue(License.automaticCheckIsDue(stale, lastAttempt: nil, now: t0))
+    }
+
+    /// Launch with a licence confirmed an hour ago. Saying yes here records an
+    /// attempt for a request `revalidate()` then declines to send, and the
+    /// real check slips a day, on every launch.
+    func testAFreshLicenceIsNotCheckedAtLaunch() {
+        let fresh = License.State(
+            key: "K", instanceID: "inst_1", lastValidated: t0.addingTimeInterval(-hour))
+        XCTAssertFalse(License.automaticCheckIsDue(fresh, lastAttempt: nil, now: t0))
+    }
+
+    /// The clock was wrong when the last attempt was recorded, so that attempt
+    /// now sits in the future. Waiting for the clock to catch up could park a
+    /// due licence for as long as the clock was off by.
+    func testAnAttemptRecordedInTheFutureDoesNotHoldACheckBack() {
+        let stale = License.State(
+            key: "K", instanceID: "inst_1", lastValidated: t0.addingTimeInterval(-2 * 24 * hour))
+        let future = t0.addingTimeInterval(400 * 24 * hour)
+        XCTAssertTrue(License.automaticCheckIsDue(stale, lastAttempt: future, now: t0))
+    }
 }

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { looksAutomated } from "./index.js";
+import { buySource, looksAutomated } from "./index.js";
 
 /**
  * Whether a request is counted as a person.
@@ -63,4 +63,18 @@ test("a request with no user agent is not a person", () => {
 /// download would make the download number grow on its own.
 test("Sparkle updating itself is not a new download", () => {
   assert.equal(looksAutomated(ua("RollScrub/1.0 Sparkle/2.6.0")), true);
+});
+
+/// Buy clicks are split by where they came from, so the stats page shows how
+/// many people start checkout from the app rather than the site. The ref is
+/// typed by whoever sends the request, so only known values may become a
+/// row name; anything else counts as a click on the website.
+test("a Buy click is filed under where it came from, and nothing else", () => {
+  const src = (q) => buySource(new URL(`https://rollscrub.com/buy${q}`));
+  assert.equal(src("?ref=app"), "app");
+  assert.equal(src("?ref=cli"), "cli");
+  assert.equal(src(""), "site");
+  assert.equal(src("?ref="), "site");
+  assert.equal(src("?ref=APP"), "site");
+  assert.equal(src("?ref=<script>"), "site");
 });

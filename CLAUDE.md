@@ -67,9 +67,9 @@ Specific traps, each of which has already happened:
 
 ## Tests
 
-`swift test` — 84 tests, and they run in under a second. Keep it that way.
+`swift test` — 103 tests, and they run in under a second. Keep it that way.
 
-`npm test` — 34 tests over the Worker: the licence proxy in
+`npm test` — 35 tests over the Worker: the licence proxy in
 `worker/license.js`, and the person-or-crawler split in `worker/index.js`.
 Node's own runner, no dependencies. Name the file explicitly
 (`worker/*.test.js`), not the directory: `node --test worker/` reports one

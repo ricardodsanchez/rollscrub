@@ -77,6 +77,14 @@ struct ContentView: View {
         .alert("Move to Trash?", isPresented: $showApplyConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Move to Trash", role: .destructive) {
+                // Checked again at the last moment, for the same reason as the
+                // Remove button: the alert can sit open across the moment a
+                // licence lapses.
+                license.refreshFromStore()
+                guard !needsLicenceToApply else {
+                    openUnlockWindow()
+                    return
+                }
                 Task { await session.apply() }
             }
         } message: {
@@ -454,8 +462,14 @@ struct ContentView: View {
             Button {
                 // Keeping files needs no licence — only removal is paid, and
                 // a decision to leave something alone must never be blocked.
+                // Read the licence fresh rather than trusting the value cached
+                // at launch: a window left open for weeks can outlive the
+                // offline grace window, and that must lock removal now, not
+                // at the next relaunch. (A refund is noticed by the daily
+                // re-check, not here; this reads only the keychain and clock.)
+                license.refreshFromStore()
                 if needsLicenceToApply {
-                    openWindow(id: "license")
+                    openUnlockWindow()
                 } else {
                     showApplyConfirmation = true
                 }
@@ -491,6 +505,13 @@ struct ContentView: View {
                 + "\(restores == 1 ? "its" : "their") original folder\(restores == 1 ? "" : "s").")
         }
         return parts.joined(separator: "\n\n")
+    }
+
+    private func openUnlockWindow() {
+        license.unlockContext = UnlockContext(
+            files: session.markedForDiscard.count,
+            bytes: session.reclaimableBytes)
+        openWindow(id: "license")
     }
 
     private func chooseFolderToScan() {

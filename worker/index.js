@@ -122,6 +122,18 @@ function classify(pathname, request) {
 // on rollscrub.com after this to count it from.
 const BUY_URL = "https://buy.rollscrub.com/payment/prod_53G0PoiZ59pjRrJKuXN6Rj";
 
+/**
+ * Where a Buy click came from: the app's unlock window, the CLI's refusal
+ * message, or the website. Read from `?ref=`, which anyone can type, so only
+ * the known values are kept; anything else is filed as "site" rather than
+ * stored, since a caller-chosen string would otherwise become a row name on
+ * the stats page. Must match `License.PurchaseEntry` in the app.
+ */
+export function buySource(url) {
+  const ref = url.searchParams.get("ref");
+  return ref === "app" || ref === "cli" ? ref : "site";
+}
+
 async function record(env, event, request) {
   if (!env.STATS) return; // binding absent: never break serving over telemetry
   const country = request.cf?.country ?? "??";
@@ -195,6 +207,15 @@ async function stats(request, env) {
     `SELECT name, SUM(count) AS n FROM events WHERE kind = 'referrer'
      GROUP BY name ORDER BY n DESC LIMIT 15`
   ).all();
+  // Clicks only: a sale still shows up solely as a /thanks view, which carries
+  // no source, so this says where buyers start, not which source sells.
+  // Clicks recorded before sources were tagged carry the name "buy", and
+  // every one of them came from the website, so they are reported as such.
+  const buySources = await env.STATS.prepare(
+    `SELECT CASE name WHEN 'buy' THEN 'site' ELSE name END AS source, SUM(count) AS n
+     FROM events WHERE kind = 'buy-click'
+     GROUP BY source ORDER BY n DESC`
+  ).all();
   const versions = await env.STATS.prepare(
     `SELECT name, SUM(count) AS n FROM events WHERE kind = 'update-check'
      GROUP BY name ORDER BY n DESC`
@@ -233,7 +254,11 @@ async function stats(request, env) {
   // the card actually went through, and there's no webhook wired up to ask.
   // buyRate is the honest number; checkoutRate is only a rough proxy on top
   // of it, and can read over 100% (see the caveat printed below it).
-  const buyRate = views ? `${((buyClicks / views) * 100).toFixed(1)}%` : "—";
+  // Measured against site clicks only: a click from the app or the CLI never
+  // loaded the page, so counting it here would inflate a rate whose
+  // denominator is page readers, and could push it past 100% on a quiet day.
+  const siteBuyClicks = buySources.results.find((r) => r.source === "site")?.n ?? 0;
+  const buyRate = views ? `${((siteBuyClicks / views) * 100).toFixed(1)}%` : "—";
   const checkoutRate = buyClicks ? `${((purchases / buyClicks) * 100).toFixed(0)}%` : "—";
   const noise = views + botViews
     ? `${((botViews / (views + botViews)) * 100).toFixed(0)}%`
@@ -249,7 +274,7 @@ async function stats(request, env) {
 </div>
 <div class="row">
   <div><div class="big">${buyClicks}</div><div class="muted">Buy clicks</div></div>
-  <div><div class="big">${buyRate}</div><div class="muted">of readers click Buy</div></div>
+  <div><div class="big">${buyRate}</div><div class="muted">of readers click Buy on the site</div></div>
   <div><div class="big">${purchases}</div><div class="muted">reached /thanks</div></div>
   <div><div class="big">${checkoutRate}</div><div class="muted">of Buy clicks finish checkout</div></div>
 </div>
@@ -267,6 +292,10 @@ lower for a refund, since nothing here hears about those either.</p>
 <h2>Where readers come from</h2>
 <table><tr><th>Source</th><th class="n">Visits</th></tr>
 ${rows(sources, [(r) => `<td>${esc(r.name)}</td>`, (r) => `<td class="n">${r.n}</td>`])}</table>
+
+<h2>Buy clicks by source</h2>
+<table><tr><th>Source</th><th class="n">Clicks</th></tr>
+${rows(buySources, [(r) => `<td>${esc(r.source)}</td>`, (r) => `<td class="n">${r.n}</td>`])}</table>
 
 <h2>Live installs by version</h2>
 <table><tr><th>Version</th><th class="n">Update checks</th></tr>
@@ -311,7 +340,7 @@ export default {
       if (request.method === "GET") {
         const automated = looksAutomated(request);
         ctx.waitUntil(
-          record(env, { kind: automated ? "buy-click-bot" : "buy-click", name: "buy" }, request)
+          record(env, { kind: automated ? "buy-click-bot" : "buy-click", name: buySource(url) }, request)
         );
       }
       return Response.redirect(BUY_URL, 302);
