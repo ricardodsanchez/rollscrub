@@ -3,6 +3,19 @@
     <channel>
         <title>RollScrub</title>
         <item>
+            <title>1.4</title>
+            <pubDate>Mon, 12 Oct 2026 21:13:07 -0700</pubDate>
+            <sparkle:version>5</sparkle:version>
+            <sparkle:shortVersionString>1.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://rollscrub.com/releases/RollScrub-1.4.zip" length="2525284" type="application/octet-stream" sparkle:edSignature="BTOiowtVnn8Nz9ayDXXhd8YQHYlR/mMAwbTw13E/2rTs3MTrv5dDl1fWDpp7et2hdWf5rGW/bG8lLxT2pU26Bg=="/>
+            <sparkle:deltas>
+                <enclosure url="https://rollscrub.com/releases/RollScrub5-4.delta" sparkle:deltaFrom="4" length="349226" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="lfu58mGuBOyzjMsBuF47/0DHpvP92X+qj0FZHKD3aby2iNrjBgNgLaD6wOy0/UNmwrSyZXuaGOJtADRid8edAg=="/>
+                <enclosure url="https://rollscrub.com/releases/RollScrub5-2.delta" sparkle:deltaFrom="2" length="470674" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="/uoHw/Vq3K3OfY4uiFfTxUi38TNFaDD/KFgV8KrHBgmaVd5+pev46gJ6jvVr4q+4TAs9I25W6meSp0JdHu9EAA=="/>
+                <enclosure url="https://rollscrub.com/releases/RollScrub5-1.delta" sparkle:deltaFrom="1" length="643174" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="33lA0eb4qGLXKmVI11znMwjoSljWSw8xtv8ARpF/kqhnR2Ryh+GlOxQdMWC544ORKS89/VnflfuzjmxUeuhyCg=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>1.3</title>
             <pubDate>Wed, 23 Sep 2026 01:13:46 -0700</pubDate>
             <sparkle:version>4</sparkle:version>
@@ -24,14 +37,6 @@
             <sparkle:deltas>
                 <enclosure url="https://rollscrub.com/releases/RollScrub2-1.delta" sparkle:deltaFrom="1" length="387258" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="DnVp1edehkluVAYkX2KgW0PVdk7Y7l+fi8Zw8ws5lyZ3d9EANIVyizbGJQD+D/qSTKWg7YVVT353AOLfeaDtAA=="/>
             </sparkle:deltas>
-        </item>
-        <item>
-            <title>1.0</title>
-            <pubDate>Sun, 13 Sep 2026 14:43:05 -0700</pubDate>
-            <sparkle:version>1</sparkle:version>
-            <sparkle:shortVersionString>1.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://rollscrub.com/releases/RollScrub-1.0.zip" length="2159690" type="application/octet-stream" sparkle:edSignature="VuJpyYNJi2AR9hSMwTOhaGXSuT+LbJMETGgEtbojZfK/WYBvvJgFqyW1d0wnaQJvJli4DcFYY4Yy7gT/V+e0Cg=="/>
         </item>
     </channel>
 </rss>
