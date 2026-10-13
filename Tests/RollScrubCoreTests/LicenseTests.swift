@@ -266,3 +266,167 @@ final class LicenseAutomaticCheckTests: XCTestCase {
         XCTAssertTrue(License.automaticCheckIsDue(stale, lastAttempt: future, now: t0))
     }
 }
+
+/// Reading the keychain. "Would not answer" and "nothing there" used to be
+/// the same value, and the difference is a customer's activation slot.
+final class LicenseStandingTests: XCTestCase {
+
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+    private let day: TimeInterval = 60 * 60 * 24
+
+    private func licence(validatedDaysAgo days: Double?) -> License.Reading {
+        .licence(License.State(
+            key: "K", instanceID: "inst_1",
+            lastValidated: days.map { now.addingTimeInterval(-$0 * day) }))
+    }
+
+    private func data(_ state: License.State) throws -> Data {
+        try JSONEncoder().encode(state)
+    }
+
+    /// Only "item not found" means no licence. If a locked keychain or a
+    /// refused permission prompt read as absent, a paying customer would be
+    /// shown Buy and a key field, and pasting the key takes a second slot.
+    func testAKeychainThatWouldNotAnswerIsNotAMacWithNoLicence() {
+        XCTAssertEqual(License.reading(status: errSecItemNotFound, data: nil), .absent)
+        for status in [errSecInteractionNotAllowed, errSecAuthFailed, errSecUserCanceled,
+                       errSecNotAvailable, errSecIO] {
+            XCTAssertEqual(License.reading(status: status, data: nil), .unreadable, "\(status)")
+        }
+    }
+
+    /// The ordinary read. If this broke, nobody's licence would be found.
+    func testAStoredLicenceIsRead() throws {
+        let state = License.State(key: "K", instanceID: "inst_1", lastValidated: now)
+        XCTAssertEqual(
+            License.reading(status: errSecSuccess, data: try data(state)), .licence(state))
+    }
+
+    /// An item that cannot be decoded can never work again. Calling it
+    /// unreadable would leave its owner at a window with no key field, with
+    /// no way back in but an email.
+    func testACorruptItemIsTreatedAsNoLicenceSoAKeyCanBeEntered() {
+        XCTAssertEqual(
+            License.reading(status: errSecSuccess, data: Data("not json".utf8)), .absent)
+    }
+
+    /// The four answers the window and the CLI branch on. `unreadable` must
+    /// never fall into `unlicensed`, which is the layout with the key field,
+    /// and it must never unlock removal either.
+    func testStandingKeepsUnreadableApartFromUnlicensed() {
+        func standing(_ reading: License.Reading) -> License.Standing {
+            License.standing(reading, now: now, developerUnlocked: false)
+        }
+        XCTAssertEqual(standing(.absent), .unlicensed)
+        XCTAssertEqual(standing(.unreadable), .unreadable)
+        XCTAssertEqual(standing(licence(validatedDaysAgo: 1)), .licensed)
+        XCTAssertEqual(standing(licence(validatedDaysAgo: nil)), .licensed)
+        XCTAssertEqual(standing(licence(validatedDaysAgo: 31)), .needsRecheck)
+
+        XCTAssertFalse(License.Standing.unreadable.unlocksRemoval)
+        XCTAssertFalse(License.Standing.needsRecheck.unlocksRemoval)
+        XCTAssertFalse(License.Standing.unlicensed.unlocksRemoval)
+        XCTAssertFalse(License.Standing.unreadable.hasLicence)
+    }
+
+    /// A real licence is never reported as the developer unlock, or a debug
+    /// build would hide the Deactivate button from someone who holds one.
+    func testDeveloperUnlockDoesNotMaskARealLicence() {
+        XCTAssertEqual(
+            License.standing(licence(validatedDaysAgo: 1), now: now, developerUnlocked: true),
+            .licensed)
+        XCTAssertEqual(
+            License.standing(.absent, now: now, developerUnlocked: true), .developerUnlocked)
+    }
+
+    /// Mid-session, a read that fails after one that found a licence changes
+    /// nothing: the customer was licensed a moment ago and a keychain hiccup
+    /// is not evidence otherwise. Without this, Remove locks at random.
+    func testAFailedReadDoesNotUndoALicenceAlreadySeen() {
+        XCTAssertEqual(License.settled(.unreadable, after: .licensed), .licensed)
+        XCTAssertEqual(License.settled(.unreadable, after: .needsRecheck), .needsRecheck)
+    }
+
+    /// The opposite direction is not carried over. "No licence" followed by a
+    /// read that fails means something may be stored now, and keeping the Buy
+    /// layout would put the key field over it.
+    func testAFailedReadIsNotPaperedOverWithAnEarlierNoLicence() {
+        XCTAssertEqual(License.settled(.unreadable, after: .unlicensed), .unreadable)
+        XCTAssertEqual(License.settled(.unreadable, after: nil), .unreadable)
+        XCTAssertEqual(License.settled(.unreadable, after: .developerUnlocked), .unreadable)
+    }
+
+    /// A read that works always wins, in both directions: a lapse must lock
+    /// and a fresh activation must unlock.
+    func testAReadThatAnswersReplacesWhatWasBelieved() {
+        XCTAssertEqual(License.settled(.unlicensed, after: .licensed), .unlicensed)
+        XCTAssertEqual(License.settled(.needsRecheck, after: .licensed), .needsRecheck)
+        XCTAssertEqual(License.settled(.licensed, after: .unreadable), .licensed)
+    }
+}
+
+/// Deactivating, and what a failed check says to the person who ran it.
+final class LicenseOutcomeTests: XCTestCase {
+
+    /// Offline, or the server could not say. Forgetting the licence here
+    /// leaves the activation on Creem with nothing on this Mac that knows its
+    /// instance id, so the slot is lost for good while the window claims it
+    /// was freed.
+    func testDeactivatingWithoutAReleaseKeepsTheLicence() {
+        XCTAssertEqual(License.deactivation(nil), .unreachable)
+        XCTAssertEqual(License.deactivation(.cannotTell), .notReleased)
+    }
+
+    /// The Worker refuses a deactivation before removing anything, when it
+    /// does not recognise the key as ours. For a key that activated here that
+    /// is the Worker misreading a reply, and forgetting on it would drop the
+    /// licence from this Mac while its slot stays taken.
+    func testARefusedDeactivationKeepsTheLicenceBecauseNothingWasReleased() {
+        XCTAssertEqual(License.deactivation(.refused("different product")), .notReleased)
+    }
+
+    /// Only a released slot removes the licence, and then it must: otherwise
+    /// a Mac being sold could never be signed out.
+    func testOnlyAReleasedSlotRemovesTheLicence() {
+        XCTAssertEqual(License.deactivation(.ok(instanceID: nil)), .removed)
+        XCTAssertNil(License.DeactivationOutcome.removed.explanation)
+    }
+
+    /// Both ways of failing say the licence is still here, and only the one
+    /// with no reply blames the connection.
+    func testAFailedDeactivationSaysTheLicenceIsStillActive() throws {
+        let unreachable = try XCTUnwrap(License.DeactivationOutcome.unreachable.explanation)
+        let notReleased = try XCTUnwrap(License.DeactivationOutcome.notReleased.explanation)
+        XCTAssertTrue(unreachable.contains("Could not reach"))
+        XCTAssertFalse(notReleased.contains("Could not reach"))
+        for message in [unreachable, notReleased] {
+            XCTAssertTrue(message.contains("still active here"))
+        }
+    }
+
+    /// "Could not reach the server" sends people to check a connection that
+    /// works. When the server did answer, the message has to say the fault is
+    /// ours, and neither message may suggest the licence is gone.
+    func testAFailedCheckSaysWhetherTheServerWasReached() throws {
+        let unreachable = try XCTUnwrap(License.RecheckOutcome.unreachable.explanation)
+        let noVerdict = try XCTUnwrap(License.RecheckOutcome.noVerdict.explanation)
+        XCTAssertNotEqual(unreachable, noVerdict)
+        XCTAssertTrue(unreachable.contains("Could not reach"))
+        XCTAssertFalse(noVerdict.contains("Could not reach"))
+        for message in [unreachable, noVerdict] {
+            XCTAssertTrue(message.contains("still saved on this Mac"))
+        }
+    }
+
+    /// A refusal removes the licence, and the window then offers Buy. Without
+    /// the reason, someone whose key was deactivated from another Mac sees a
+    /// purchase screen and nothing else.
+    func testARevokedLicenceExplainsItselfAndCarriesTheServersReason() throws {
+        let message = try XCTUnwrap(
+            License.RecheckOutcome.revoked(reason: "This licence was refunded.").explanation)
+        XCTAssertTrue(message.contains("has been removed"))
+        XCTAssertTrue(message.contains("This licence was refunded."))
+        XCTAssertNil(License.RecheckOutcome.confirmed.explanation)
+        XCTAssertNil(License.RecheckOutcome.notNeeded.explanation)
+    }
+}

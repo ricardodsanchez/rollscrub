@@ -17,21 +17,35 @@ final class LicenseModel: ObservableObject {
     /// the menu item, so a window opened from the menu never shows numbers
     /// left over from an earlier review.
     @Published var unlockContext: UnlockContext?
-    @Published private(set) var isPro = License.isPro()
+    @Published private(set) var standing = License.standing()
+    @Published private(set) var isWorking = false
+    @Published var error: String?
+    /// Why a licence that used to be here is gone. Set when the server
+    /// refuses one, so the window that then offers Buy says what happened
+    /// instead of leaving a paid customer to guess.
+    @Published private(set) var notice: String?
+
+    var isPro: Bool { standing.unlocksRemoval }
     /// Whether a real licence is stored, which is not the same question as
     /// `isPro`: a debug build can be unlocked with no licence at all, and a
     /// stored licence can fall outside the offline grace window.
-    @Published private(set) var isActivated = License.isActivated
-    @Published private(set) var isWorking = false
-    @Published var error: String?
+    var isActivated: Bool { standing.hasLicence }
 
     /// Fixed for the life of the process — the environment does not change
     /// under a running app — and always false in a release build.
     let isDeveloperUnlocked = License.isDeveloperUnlocked
 
+    /// One keychain read. A read that fails mid-session does not undo what an
+    /// earlier one found; see `License.settled`.
+    ///
+    /// A message belongs to the layout it was written for. When the standing
+    /// changes underneath it, say a background check revokes a licence whose
+    /// failed Deactivate is still on screen, it would otherwise carry over
+    /// and contradict what the window now says.
     func refreshFromStore() {
-        isPro = License.isPro()
-        isActivated = License.isActivated
+        let fresh = License.settled(License.standing(), after: standing)
+        if fresh != standing { error = nil }
+        standing = fresh
     }
 
     func activate() async {
@@ -46,6 +60,7 @@ final class LicenseModel: ObservableObject {
                 ?? "Mac")
             key = ""
             unlockContext = nil
+            notice = nil
             refreshFromStore()
         } catch {
             self.error = error.localizedDescription
@@ -53,13 +68,15 @@ final class LicenseModel: ObservableObject {
     }
 
     func deactivate() async {
+        guard !isWorking else { return }
         isWorking = true
         // A message left over from an earlier failed check would otherwise
         // reappear under the Buy layout once the licence is gone.
         error = nil
         defer { isWorking = false }
-        await License.deactivate()
+        let outcome = await License.deactivate()
         refreshFromStore()
+        error = outcome.explanation
     }
 
     /// The unlock window's Check Again, for a saved licence past the offline
@@ -72,12 +89,28 @@ final class LicenseModel: ObservableObject {
         isWorking = true
         error = nil
         defer { isWorking = false }
-        await License.revalidate()
+        let outcome = await License.revalidate()
         refreshFromStore()
+        note(outcome)
         if !isPro && isActivated {
-            error = "Could not reach the licence server. Your licence is still saved "
-                + "on this Mac; try again once you are online."
+            // Still locked. Say which of the two failures it was; anything
+            // else here means no request was sent at all.
+            error = outcome.explanation
+                ?? "Your licence could not be checked just now. Try again in a moment."
         }
+    }
+
+    /// Reads the keychain again, for the layout shown when it would not answer.
+    func readAgain() {
+        error = nil
+        standing = License.standing()
+        if standing == .unreadable {
+            error = "macOS still would not let RollScrub read its saved licence."
+        }
+    }
+
+    private func note(_ outcome: License.RecheckOutcome) {
+        if case .revoked = outcome { notice = outcome.explanation }
     }
 
     /// When the last automatic check was sent, whatever it concluded.
@@ -98,8 +131,9 @@ final class LicenseModel: ObservableObject {
         }
         lastAutomaticCheck = now
         Task {
-            await License.revalidate()
+            let outcome = await License.revalidate()
             refreshFromStore()
+            note(outcome)
         }
     }
 }
@@ -107,15 +141,24 @@ final class LicenseModel: ObservableObject {
 struct LicenseView: View {
     @ObservedObject var model: LicenseModel
     @Environment(\.openURL) private var openURL
+    @FocusState private var focus: Field?
+
+    private enum Field { case buy, key }
 
     /// A licence is stored but has gone past the offline grace window without
     /// reaching the server. This person has already paid: offering them a
     /// purchase first would be the wrong answer, so they get a re-check.
     private var needsRecheck: Bool { !model.isPro && model.isActivated }
 
+    /// The keychain would not say whether a licence is stored. Not the Buy
+    /// layout: this may well be a customer, and the key field there would
+    /// spend a second activation slot on a Mac that already holds one.
+    private var cannotReadLicence: Bool { model.standing == .unreadable }
+
     private var title: String {
         if model.isPro { return "RollScrub Pro" }
         if needsRecheck { return "Your licence needs a check" }
+        if cannotReadLicence { return "Could not read your licence" }
         guard let ctx = model.unlockContext else { return "Unlock removal" }
         let files = "\(ctx.files.formatted()) duplicate\(ctx.files == 1 ? "" : "s")"
         return "Move \(files) (\(ReportWriter.humanSize(ctx.bytes))) to the Trash"
@@ -127,6 +170,11 @@ struct LicenseView: View {
             return "A licence is saved on this Mac, but it has not reached the licence "
                 + "server for over 30 days. Connect to the internet and check again. "
                 + "Nothing needs to be bought."
+        }
+        if cannotReadLicence {
+            return "macOS did not let RollScrub read its saved licence from the "
+                + "keychain, so it cannot tell whether this Mac has one. If macOS "
+                + "asks for permission, choose Always Allow. Nothing needs to be bought."
         }
         return "Scanning, reviewing and the reports are free forever. A one-time "
             + "\(License.displayPrice) licence unlocks moving duplicates to the "
@@ -166,6 +214,12 @@ struct LicenseView: View {
                         Task { await model.deactivate() }
                     }
                     .disabled(model.isWorking)
+                    if let error = model.error {
+                        Text(error)
+                            .font(.callout)
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     Text("Deactivating frees the slot so you can use it on another Mac.")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
@@ -200,15 +254,50 @@ struct LicenseView: View {
                     .foregroundStyle(.tertiary)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
+            } else if cannotReadLicence {
+                Button("Try Again") { model.readAgain() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+
+                if let error = model.error {
+                    Text(error)
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Text("Still stuck? Email \(AppInfo.supportEmail) and include your licence key.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
-                Button {
-                    openURL(License.purchaseURL(from: .app))
-                } label: {
+                if let notice = model.notice {
+                    Text(notice)
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                // Focus starts here, not in the key field below: someone who
+                // has not bought yet should be able to press Return and reach
+                // checkout, not be told off for an empty key. A plain button
+                // takes keyboard focus only when Keyboard Navigation is on in
+                // System Settings, so it is made focusable outright and given
+                // the keys a focused button answers to.
+                Button(action: buy) {
                     Text("Buy RollScrub Pro, \(License.displayPrice)")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                .focusable()
+                .focused($focus, equals: .buy)
+                // Key down only: a held key repeats, and each repeat would
+                // open another checkout tab and count another click.
+                .onKeyPress(keys: [.return, .space], phases: .down) { _ in
+                    buy()
+                    return .handled
+                }
 
                 Divider()
 
@@ -224,6 +313,11 @@ struct LicenseView: View {
         }
         .padding(28)
         .frame(width: 460)
+        .defaultFocus($focus, .buy)
+    }
+
+    private func buy() {
+        openURL(License.purchaseURL(from: .app))
     }
 
     private var keyEntry: some View {
@@ -232,10 +326,15 @@ struct LicenseView: View {
                 TextField("Licence key", text: $model.key)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(.body, design: .monospaced))
+                    .focused($focus, equals: .key)
                     .onSubmit {
                         // Return in the field must respect the same lock as
                         // the buttons, so an activation never overlaps a check.
-                        guard !model.isWorking else { return }
+                        // An empty field does nothing, as the disabled
+                        // Activate button beside it does.
+                        guard !model.isWorking,
+                              !model.key.trimmingCharacters(in: .whitespaces).isEmpty
+                        else { return }
                         Task { await model.activate() }
                     }
                 Button("Activate") { Task { await model.activate() } }

@@ -16,6 +16,11 @@ struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
     @StateObject private var scanner = ScanCoordinator()
     @State private var showApplyConfirmation = false
+    /// Whether the alert on screen said files go to the Trash. Fixed when it
+    /// opens: the alert is the consent, and confirming one that said nothing
+    /// is removed must not remove anything, even if a licence was activated
+    /// while it sat open.
+    @State private var alertOffersRemoval = false
     /// Hidden until there is a review to show. Before a scan the sidebar holds
     /// an empty list under a filter reading "(0)", and it pushes the welcome
     /// screen off the window's centre for no gain.
@@ -43,7 +48,12 @@ struct ContentView: View {
     private var applyButtonTitle: String {
         let files = Self.count(session.markedForDiscard.count, "file", "files")
         if needsLicenceToApply {
-            return "Unlock to Remove \(files)…"
+            // Keep decisions in the same batch are not held back by the
+            // licence, so the button offers them first; the unlock window
+            // follows for the rest.
+            return session.markedForKeep.isEmpty
+                ? "Unlock to Remove \(files)…"
+                : "Apply \(Self.count(session.markedForKeep.count, "decision", "decisions"))…"
         }
         return session.markedForDiscard.isEmpty
             ? "Apply \(Self.count(session.markedForKeep.count, "decision", "decisions"))"
@@ -74,18 +84,26 @@ struct ContentView: View {
         .safeAreaInset(edge: .bottom) {
             if hasReview && !scanner.isScanning { statusBar }
         }
-        .alert("Move to Trash?", isPresented: $showApplyConfirmation) {
+        .alert(
+            alertOffersRemoval ? "Move to Trash?" : "Apply decisions?",
+            isPresented: $showApplyConfirmation
+        ) {
             Button("Cancel", role: .cancel) {}
-            Button("Move to Trash", role: .destructive) {
+            Button(alertOffersRemoval ? "Move to Trash" : "Apply",
+                   role: alertOffersRemoval ? .destructive : nil) {
                 // Checked again at the last moment, for the same reason as the
                 // Remove button: the alert can sit open across the moment a
-                // licence lapses.
+                // licence lapses. If it has, nothing is removed, and the keep
+                // decisions still go through. The reverse never happens:
+                // removal needs both the alert to have offered it and the
+                // licence to still unlock it.
                 license.refreshFromStore()
-                guard !needsLicenceToApply else {
-                    openUnlockWindow()
-                    return
+                let plan = session.applyPlan(removalUnlocked: license.isPro)
+                let removing = alertOffersRemoval && plan.removes
+                Task {
+                    await session.apply(removing: removing)
+                    if plan.opensUnlock { openUnlockWindow() }
                 }
-                Task { await session.apply() }
             }
         } message: {
             Text(applyMessage)
@@ -468,10 +486,12 @@ struct ContentView: View {
                 // at the next relaunch. (A refund is noticed by the daily
                 // re-check, not here; this reads only the keychain and clock.)
                 license.refreshFromStore()
-                if needsLicenceToApply {
-                    openUnlockWindow()
-                } else {
+                let plan = session.applyPlan(removalUnlocked: license.isPro)
+                if plan.confirms {
+                    alertOffersRemoval = plan.removes
                     showApplyConfirmation = true
+                } else if plan.opensUnlock {
+                    openUnlockWindow()
                 }
             } label: {
                 Text(applyButtonTitle)
@@ -489,7 +509,9 @@ struct ContentView: View {
 
     private var applyMessage: String {
         var parts: [String] = []
-        if !session.markedForDiscard.isEmpty {
+        // Follows what the alert's title and button were fixed to say when it
+        // opened, so the three never disagree.
+        if alertOffersRemoval && !session.markedForDiscard.isEmpty {
             parts.append(
                 "\(session.markedForDiscard.count) duplicate(s) — "
                 + "\(ReportWriter.humanSize(session.reclaimableBytes)) — go to the Trash, "
@@ -503,6 +525,13 @@ struct ContentView: View {
                 "\(Self.count(restores, "file", "files")) "
                 + "\(restores == 1 ? "goes" : "go") back to "
                 + "\(restores == 1 ? "its" : "their") original folder\(restores == 1 ? "" : "s").")
+        }
+        if !alertOffersRemoval && !session.markedForDiscard.isEmpty {
+            let n = session.markedForDiscard.count
+            parts.append(
+                "\(Self.count(n, "duplicate", "duplicates")) marked for removal "
+                + "\(n == 1 ? "stays where it is" : "stay where they are"). "
+                + "Removing needs a licence, and the unlock window opens next.")
         }
         return parts.joined(separator: "\n\n")
     }

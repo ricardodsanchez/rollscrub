@@ -280,6 +280,30 @@ final class ReviewSession: ObservableObject {
         selection = filtered.first?.id
     }
 
+    /// What the Apply button does, given whether removal is unlocked.
+    struct ApplyPlan: Equatable {
+        /// Ask before touching anything. False only when there is nothing to
+        /// do but offer the licence.
+        var confirms: Bool
+        /// Whether files marked for removal go to the Trash.
+        var removes: Bool
+        /// Whether the unlock window opens, for removals left undone.
+        var opensUnlock: Bool
+    }
+
+    /// Only removal is paid. Without a licence the keep decisions in the same
+    /// batch still go through, restores included: a file somebody decided to
+    /// put back must not wait on a purchase because another file in the queue
+    /// is marked for the Trash.
+    func applyPlan(removalUnlocked: Bool) -> ApplyPlan {
+        let discards = !markedForDiscard.isEmpty
+        let keeps = !markedForKeep.isEmpty
+        if removalUnlocked || !discards {
+            return ApplyPlan(confirms: discards || keeps, removes: discards, opensUnlock: false)
+        }
+        return ApplyPlan(confirms: keeps, removes: false, opensUnlock: true)
+    }
+
     var markedForDiscard: [ReviewItem] {
         items.filter { !$0.isResolved && $0.decision == .discard }
     }
@@ -365,12 +389,21 @@ final class ReviewSession: ObservableObject {
     ///
     /// Before each file goes, its counterpart is re-checked byte for byte:
     /// nothing is removed unless an identical copy is verifiably still there.
-    func apply() async {
+    ///
+    /// `removing: false` leaves everything marked for removal exactly as it is,
+    /// still marked, and carries out only the keep decisions. That is what an
+    /// unlicensed Mac gets: putting a parked file back is an undo, and undo is
+    /// never held behind a licence.
+    ///
+    /// The argument has no default. Whether removal is unlocked is decided by
+    /// the caller, from `applyPlan`, and a bare `apply()` that removed files
+    /// would be a licence check waiting to be forgotten.
+    func apply(removing: Bool) async {
         isApplying = true
         defer { isApplying = false }
 
         var trashable: [ReviewItem] = []
-        for item in markedForDiscard {
+        for item in removing ? markedForDiscard : [] {
             guard let index = items.firstIndex(where: { $0.id == item.id }) else { continue }
             guard FileManager.default.fileExists(atPath: item.keepURL.path) else {
                 items[index].state = .failed("the copy it duplicates is missing")

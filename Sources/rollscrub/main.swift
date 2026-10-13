@@ -204,6 +204,23 @@ print("")
 
 // MARK: - Optional move
 
+final class ResultBox<T>: @unchecked Sendable { var value: T? }
+
+/// Runs one async call to completion from this synchronous script. A top-level
+/// `await` would do the same job, but it turns every global in this file into
+/// main-actor state, and the scan's progress callback reads them from worker
+/// threads.
+func blocking<T: Sendable>(_ work: @escaping @Sendable () async -> T) -> T {
+    let box = ResultBox<T>()
+    let done = DispatchSemaphore(value: 0)
+    Task.detached {
+        box.value = await work()
+        done.signal()
+    }
+    done.wait()
+    return box.value!
+}
+
 guard shouldMove else {
     print("Nothing was moved or deleted. Re-run with --move to set the")
     print("REMOVE files aside in \(SkipRules.reviewDirectoryName)/ inside whichever")
@@ -214,7 +231,54 @@ guard shouldMove else {
 // Scanning and the reports are free; setting files aside is the paid action.
 // The licence lives in the keychain, so activating in the app covers this too.
 // --undo is deliberately never gated: reversing a move must always work.
-guard License.isPro() else {
+//
+// The app re-checks a licence daily and records the answer. This tool only
+// reads. A licence the app confirmed within thirty days is taken as it stands.
+// Past that, which is where someone who only ever runs the tool ends up, it
+// asks the server once per run and goes ahead on a yes. It saves nothing
+// either way: the keychain item belongs to the app's signature, and one this
+// binary re-created would not.
+switch License.standing() {
+case .licensed, .developerUnlocked:
+    break
+
+case .needsRecheck:
+    let recheck = blocking { await License.revalidate(saving: false) }
+    if recheck == .confirmed { break }
+    if case .revoked(let reason) = recheck {
+        print("""
+        --move could not go ahead: the licence server no longer accepts the
+        licence saved on this Mac. \(reason)
+
+        Open the RollScrub app to see the licence's state. Nothing was moved.
+        """)
+        exit(3)
+    }
+    print("""
+    --move could not confirm your licence.
+
+    A licence is saved on this Mac, but it has not reached the licence server
+    for over 30 days. \(recheck.explanation ?? "Connect to the internet and re-run this.")
+
+    Nothing needs to be bought. Nothing was moved.
+    """)
+    exit(3)
+
+case .unreadable:
+    print("""
+    --move could not read your licence.
+
+    macOS would not let this tool read the keychain, so it cannot tell whether
+    this Mac has a licence. This tool is a separate binary from the app, so the
+    first time it reads the licence the system asks permission. Run it once
+    from a Terminal window you can see, and choose Always Allow. A run with no
+    one watching cannot answer that prompt, and lands here instead.
+
+    Nothing needs to be bought. Nothing was moved.
+    """)
+    exit(3)
+
+case .unlicensed:
     print("""
     --move needs a licence.
 

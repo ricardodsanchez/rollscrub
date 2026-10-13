@@ -125,6 +125,59 @@ public enum License {
         return now.timeIntervalSince(validated) < offlineGrace
     }
 
+    // MARK: - Standing
+
+    /// Where this Mac stands, as one answer from one keychain read.
+    ///
+    /// `unreadable` is the reason this exists. A keychain that would not
+    /// answer used to look exactly like a Mac with no licence, and the window
+    /// then offered a paying customer a Buy button and a key field. Pasting
+    /// the key there takes a second activation slot and strands the first.
+    public enum Standing: Equatable, Sendable {
+        /// A licence is stored and inside the grace window.
+        case licensed
+        /// Debug builds only: unlocked by the environment, nothing confirmed.
+        case developerUnlocked
+        /// A licence is stored but has not reached the server in 30 days.
+        case needsRecheck
+        /// The keychain answered, and there is no licence in it.
+        case unlicensed
+        /// The keychain did not answer. Whether a licence exists is unknown.
+        case unreadable
+
+        public var unlocksRemoval: Bool { self == .licensed || self == .developerUnlocked }
+        public var hasLicence: Bool { self == .licensed || self == .needsRecheck }
+    }
+
+    static func standing(_ reading: Reading, now: Date, developerUnlocked: Bool) -> Standing {
+        if case .licence(let state) = reading {
+            guard let validated = state.lastValidated else { return .licensed }
+            if now.timeIntervalSince(validated) < offlineGrace { return .licensed }
+        }
+        if developerUnlocked { return .developerUnlocked }
+        switch reading {
+        case .licence: return .needsRecheck
+        case .absent: return .unlicensed
+        case .unreadable: return .unreadable
+        }
+    }
+
+    public static func standing(now: Date = Date()) -> Standing {
+        standing(read(), now: now, developerUnlocked: isDeveloperUnlocked)
+    }
+
+    /// What a running app should believe after a fresh read.
+    ///
+    /// A read that fails after one that found a licence says nothing new about
+    /// the licence, so the earlier answer stands: a customer mid-session keeps
+    /// working. Nothing else is carried over. An earlier "no licence" is not
+    /// kept, because an unreadable item means something may be there now, and
+    /// showing the key field over it is the mistake this type prevents.
+    public static func settled(_ fresh: Standing, after previous: Standing?) -> Standing {
+        guard fresh == .unreadable, let previous, previous.hasLicence else { return fresh }
+        return previous
+    }
+
     // MARK: - Developer unlock
 
     /// Unlocks removal in a **debug build** when `ROLLSCRUB_DEVELOPER_UNLOCK=1`
@@ -249,11 +302,56 @@ public enum License {
         }
     }
 
+    /// What a re-check concluded. Only `revoked` changes anything on disk.
+    public enum RecheckOutcome: Equatable, Sendable {
+        /// Nothing stored, or confirmed too recently to ask again.
+        case notNeeded
+        case confirmed
+        /// The server refused the licence and it was removed from this Mac.
+        case revoked(reason: String)
+        /// No reply at all: offline, a timeout, or something that was not JSON.
+        case unreachable
+        /// The server replied and could not say either way.
+        case noVerdict
+        /// The stored licence changed while the request was in flight.
+        case superseded
+
+        /// What to tell someone who pressed Check Again and is still locked.
+        /// The two failures read differently on purpose: "check your
+        /// connection" sends a person with working internet to restart a
+        /// router over a fault that is ours.
+        public var explanation: String? {
+            switch self {
+            case .unreachable:
+                return "Could not reach the licence server. Your licence is still saved "
+                    + "on this Mac. Try again once you are online."
+            case .noVerdict:
+                return "The licence server answered but could not confirm your licence "
+                    + "just now. That is a fault on our side, not with your key. Your "
+                    + "licence is still saved on this Mac. Try again later."
+            case .revoked(let reason):
+                return "The licence server no longer accepts the licence that was on "
+                    + "this Mac, so it has been removed. \(reason)"
+            case .notNeeded, .confirmed, .superseded:
+                return nil
+            }
+        }
+    }
+
     /// Re-checks in the background. Silent on success, and silent on failure
     /// too unless the server positively says the key is no longer valid.
-    public static func revalidate(now: Date = Date()) async {
-        guard var state = stored() else { return }
-        guard shouldRecheck(state, now: now) else { return }
+    ///
+    /// `saving: false` asks the same question and writes nothing: a
+    /// confirmation is not recorded and a refusal removes nothing. That is the
+    /// only form the command-line tool may use. It is a separately signed
+    /// binary, and a keychain item it re-created would belong to its signature
+    /// and no longer be the app's to read.
+    @discardableResult
+    public static func revalidate(now: Date = Date(), saving: Bool = true) async
+        -> RecheckOutcome
+    {
+        guard var state = stored() else { return .notNeeded }
+        guard shouldRecheck(state, now: now) else { return .notNeeded }
 
         let json: [String: Any]
         do {
@@ -262,7 +360,7 @@ public enum License {
                 "instance_id": state.instanceID,
             ])
         } catch {
-            return  // unreachable: the grace window covers this
+            return .unreachable  // the grace window covers this
         }
 
         switch verdict(from: json) {
@@ -271,26 +369,89 @@ public enum License {
             // have forgotten this licence while the request was in flight, or
             // replaced it with a new activation. Writing unconditionally would
             // resurrect the old one, or overwrite the new one with it.
-            guard isStillStored(state, current: stored()) else { return }
+            guard saving else { return .confirmed }
+            guard isStillStored(state, current: stored()) else { return .superseded }
             state.lastValidated = Date()
             try? store(state)
-        case .refused:
+            return .confirmed
+        case .refused(let reason):
+            guard saving else { return .revoked(reason: reason) }
             // Refunded, revoked, or this Mac's activation removed elsewhere.
             // Only if it is still the licence that was asked about: a key
             // activated while this request was in flight is not the one refused.
-            if isStillStored(state, current: stored()) { forget() }
+            guard isStillStored(state, current: stored()) else { return .superseded }
+            forget()
+            return .revoked(reason: reason)
         case .cannotTell:
-            break  // change nothing
+            return .noVerdict  // change nothing
         }
     }
 
-    public static func deactivate() async {
-        guard let state = stored() else { return }
-        _ = try? await post("deactivate", [
+    // MARK: - Deactivation
+
+    public enum DeactivationOutcome: Equatable, Sendable {
+        case nothingStored
+        /// The server released this Mac's slot and the licence is gone from it.
+        case removed
+        /// No reply at all. The licence was kept.
+        case unreachable
+        /// The server replied and did not release the slot. The licence was kept.
+        case notReleased
+
+        /// What to tell someone whose licence is still here after Deactivate.
+        public var explanation: String? {
+            switch self {
+            case .unreachable:
+                return "Could not reach the licence server, so this Mac's slot has not "
+                    + "been freed. The licence is still active here. Try again once you "
+                    + "are online."
+            case .notReleased:
+                return "The licence server answered but did not free this Mac's slot, "
+                    + "so the licence is still active here. That is a fault on our "
+                    + "side. Try again later."
+            case .nothingStored, .removed:
+                return nil
+            }
+        }
+    }
+
+    /// What asking the server to release this Mac's activation came to.
+    /// `nil` is no reply at all.
+    ///
+    /// The licence is forgotten on `ok` and on nothing else. Forgetting
+    /// without one used to be the behaviour, and it cost a slot: the
+    /// activation stayed on Creem with nothing left on this Mac that knew its
+    /// instance id, so it could never be released.
+    ///
+    /// A refusal keeps the licence too. The Worker refuses a deactivation
+    /// before it removes anything, when it does not recognise the key as ours,
+    /// and a key stored here already passed that test at activation. So a
+    /// refusal means the Worker misread its own reply, not that the slot is
+    /// free. A licence that really is dead is removed by the daily re-check.
+    static func deactivation(_ verdict: Verdict?) -> DeactivationOutcome {
+        switch verdict {
+        case .ok: return .removed
+        case .refused, .cannotTell: return .notReleased
+        case nil: return .unreachable
+        }
+    }
+
+    @discardableResult
+    public static func deactivate() async -> DeactivationOutcome {
+        guard let state = stored() else { return .nothingStored }
+        let json = try? await post("deactivate", [
             "key": state.key,
             "instance_id": state.instanceID,
         ])
+        let outcome = deactivation(json.map(verdict(from:)))
+        guard outcome == .removed else { return outcome }
+        // A different licence activated while this was in flight is not the
+        // one that was released, and must not be the one forgotten. Anything
+        // else goes, including an item that can no longer be read: its slot
+        // is free now, and leaving it would show a licence that is not one.
+        if let current = stored(), !isStillStored(state, current: current) { return .removed }
         forget()
+        return .removed
     }
 
     // MARK: - Transport
@@ -352,7 +513,35 @@ public enum License {
         }
     }
 
-    static func stored() -> State? {
+    /// What the keychain said. Three answers, because "would not say" and
+    /// "nothing there" lead to opposite advice.
+    enum Reading: Equatable {
+        case licence(State)
+        case absent
+        case unreadable
+    }
+
+    /// Only `errSecItemNotFound` means there is no licence. A locked keychain,
+    /// a denied or unanswerable permission prompt and every other status leave
+    /// the question open.
+    ///
+    /// An item that reads but does not decode counts as absent. It can never
+    /// be used again whatever is done, and calling it unreadable would leave
+    /// its owner at a window with no key field for good.
+    static func reading(status: OSStatus, data: Data?) -> Reading {
+        switch status {
+        case errSecSuccess:
+            guard let data, let state = try? JSONDecoder().decode(State.self, from: data)
+            else { return .absent }
+            return .licence(state)
+        case errSecItemNotFound:
+            return .absent
+        default:
+            return .unreadable
+        }
+    }
+
+    static func read() -> Reading {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -361,10 +550,13 @@ public enum License {
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-              let data = item as? Data
-        else { return nil }
-        return try? JSONDecoder().decode(State.self, from: data)
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        return reading(status: status, data: item as? Data)
+    }
+
+    static func stored() -> State? {
+        guard case .licence(let state) = read() else { return nil }
+        return state
     }
 
     public static func forget() {
