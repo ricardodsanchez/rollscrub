@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
-import worker, { buySource, isOutsideSite, looksAutomated } from "./index.js";
+import worker, { buySource, dayOf, isOutsideSite, looksAutomated } from "./index.js";
 
 /**
  * Whether a request is counted as a person.
@@ -108,12 +108,20 @@ function site() {
 
   return {
     /** One request through the Worker, with the asset handler answering `status`. */
-    async hit(path, { agent = SAFARI, country = "US", status = 200, referer } = {}) {
-      const headers = { "user-agent": agent };
+    async hit(path, { agent = SAFARI, country = "US", status = 200, referer, body = null, etag, assetHeaders = {}, ...extra } = {}) {
+      const headers = { "user-agent": agent, ...extra };
       if (referer) headers.referer = referer;
       const request = new Request(`https://rollscrub.com${path}`, { headers });
       Object.defineProperty(request, "cf", { value: { country } });
-      env.ASSETS = { fetch: async () => new Response(null, { status }) };
+      env.ASSETS = {
+        fetch: async () => {
+          const sent = { ...(etag ? { etag } : {}), ...assetHeaders };
+          if (body !== null && !("content-length" in sent)) {
+            sent["content-length"] = String(Buffer.byteLength(body));
+          }
+          return new Response(body, { status, headers: sent });
+        },
+      };
       const pending = [];
       const response = await worker.fetch(request, env, { waitUntil: (p) => pending.push(p) });
       await Promise.all(pending);
@@ -252,4 +260,121 @@ test("a release zip under a new name still counts after the fix", async () => {
   const s = site();
   s.past("2026-11-01", "download", "Scrub-2.0.zip", "US", 9);
   assert.equal(figure(await s.page(), "downloads"), "9");
+});
+
+/// The asset handler answers a Range request with the whole file and a 200.
+/// A browser resuming a download that dropped at 90% then either restarts
+/// from nothing or, worse, keeps a file that will not open. On a hotel
+/// connection that is somebody who never gets the app.
+test("a resumed download gets the bytes it asked for, and only those", async () => {
+  const s = site();
+  const file = { body: "0123456789", etag: '"v1"' };
+  const get = (range, more = {}) =>
+    s.hit("/releases/RollScrub-1.4.zip", { ...file, range, ...more });
+
+  const middle = await get("bytes=2-5");
+  assert.equal(middle.status, 206);
+  assert.equal(middle.headers.get("content-range"), "bytes 2-5/10");
+  assert.equal(middle.headers.get("content-length"), "4");
+  assert.equal(await middle.text(), "2345");
+
+  assert.equal(await (await get("bytes=7-")).text(), "789");
+  assert.equal(await (await get("bytes=-3")).text(), "789");
+  // Past the end is clamped, as a client that guessed the size expects.
+  const clamped = await get("bytes=8-99");
+  assert.equal(clamped.headers.get("content-range"), "bytes 8-9/10");
+  assert.equal(await clamped.text(), "89");
+
+  for (const range of ["bytes=10-", "bytes=-0", "bytes=99999999999999999999999-"]) {
+    const beyond = await get(range);
+    assert.equal(beyond.status, 416, range);
+    assert.equal(beyond.headers.get("content-range"), "bytes */10");
+  }
+
+  // A browser only offers to resume if the first response said it could.
+  const plain = await s.hit("/releases/RollScrub-1.4.zip", file);
+  assert.equal(plain.status, 200);
+  assert.equal(plain.headers.get("accept-ranges"), "bytes");
+  assert.equal(await plain.text(), "0123456789");
+});
+
+/// Every case here is one where cutting a slice could hand back the wrong
+/// bytes: a file that changed since the first half was fetched, a request
+/// shape this code does not parse. The whole file is always a correct answer
+/// to a Range request; a wrong slice is a corrupt download.
+test("a range this cannot answer exactly gets the whole file instead", async () => {
+  const s = site();
+  const file = { body: "0123456789", etag: '"v2"' };
+  const whole = async (options) => {
+    const response = await s.hit("/releases/RollScrub-1.4.zip", { ...file, ...options });
+    assert.equal(response.status, 200, JSON.stringify(options));
+    assert.equal(await response.text(), "0123456789");
+  };
+  await whole({ range: "bytes=0-1,4-5" });
+  await whole({ range: "bytes=-" });
+  await whole({ range: "lines=0-1" });
+  await whole({ range: "bytes=2-5", "if-range": '"v1"' });
+  await whole({ range: "bytes=2-5", "if-range": 'W/"v2"', etag: 'W/"v2"' });
+  await whole({ range: "bytes=5-2" });
+  // Offsets into a compressed body are not offsets into the file.
+  await whole({ range: "bytes=2-5", assetHeaders: { "content-encoding": "gzip" } });
+  // No stated size, or one too large to cut from memory: never buffered.
+  await whole({ range: "bytes=2-5", assetHeaders: { "content-length": "999999999" } });
+
+  const fresh = await s.hit("/releases/RollScrub-1.4.zip", {
+    ...file,
+    range: "bytes=2-5",
+    "if-range": '"v2"',
+  });
+  assert.equal(fresh.status, 206);
+
+  // And none of it is a download: one file fetched in pieces is one download,
+  // counted by the request that carried no Range.
+  assert.deepEqual(s.counts(), {});
+});
+
+/// The version in a row name is typed by whoever sends the request. Left
+/// unbounded, one script could fill the stats page with thousands of rows of
+/// its own choosing.
+test("a made-up version cannot become a row on the stats page", async () => {
+  const s = site();
+  await s.hit("/appcast.xml", { agent: `RollScrub/${"9".repeat(40)} Sparkle/2.6.0` });
+  await s.hit("/appcast.xml", { agent: "RollScrub/1.2.3.4.5 Sparkle/2.6.0" });
+  await s.hit("/appcast.xml", { agent: "RollScrub/1.4 Sparkle/2.6.0" });
+  assert.deepEqual(s.counts(), { "update-check-bot appcast": 2, "update-check 1.4": 1 });
+});
+
+/// The page has one reader, on the US west coast. Filed by UTC, everything
+/// after five in the afternoon landed on tomorrow's row, so "today" was
+/// always short and a release shipped in the evening appeared a day late.
+test("a request is filed under the day it is in California", () => {
+  assert.equal(dayOf(new Date("2026-10-14T00:45:00Z")), "2026-10-13");
+  assert.equal(dayOf(new Date("2026-10-14T06:59:59Z")), "2026-10-13");
+  assert.equal(dayOf(new Date("2026-10-14T07:00:00Z")), "2026-10-14");
+  // Winter, when the offset is eight hours rather than seven.
+  assert.equal(dayOf(new Date("2026-12-01T07:30:00Z")), "2026-11-30");
+  assert.equal(dayOf(new Date("2026-12-01T08:00:00Z")), "2026-12-01");
+});
+
+/// Updating a licensed copy to 1.4 left no trace on the page: Sparkle took
+/// the .delta, which nothing counted, and the new version does not check the
+/// appcast until its next scheduled check. Without this a release looks like
+/// it reached nobody for a day, which is when a broken appcast would look
+/// exactly the same.
+test("Sparkle fetching a release is counted as an update being installed", async () => {
+  const s = site();
+  await s.hit("/releases/RollScrub5-4.delta", { agent: SPARKLE });
+  await s.hit("/releases/RollScrub-1.4.zip", { agent: SPARKLE });
+  // A browser has no use for a delta, and a missing file updated nobody.
+  await s.hit("/releases/RollScrub5-4.delta", { agent: SAFARI });
+  await s.hit("/releases/RollScrub5-9.delta", { agent: SPARKLE, status: 404 });
+  assert.deepEqual(s.counts(), {
+    "update-fetch RollScrub5-4.delta from 1.3": 1,
+    "update-fetch RollScrub-1.4.zip from 1.3": 1,
+  });
+
+  const lines = await s.page();
+  assert.equal(lines.includes("RollScrub5-4.delta from 1.3"), true);
+  // Not a new person downloading the app.
+  assert.equal(figure(lines, "downloads"), "0");
 });

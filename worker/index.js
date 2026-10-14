@@ -18,7 +18,26 @@
 
 import { license } from "./license.js";
 
-const DAY = () => new Date().toISOString().slice(0, 10);
+/**
+ * The calendar day a request is filed under, as its one reader lives it.
+ * Filed by UTC, an evening's traffic on the US west coast landed on tomorrow's
+ * row, and "today" on the page was a day that had not started yet. Rows
+ * written before this changed are UTC days and stay that way: a daily count
+ * cannot be split back into hours.
+ */
+const TIME_ZONE = "America/Los_Angeles";
+const DAY_FORMAT = new Intl.DateTimeFormat("en-CA", {
+  timeZone: TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+export function dayOf(instant) {
+  const part = Object.fromEntries(
+    DAY_FORMAT.formatToParts(instant).map((p) => [p.type, p.value])
+  );
+  return `${part.year}-${part.month}-${part.day}`;
+}
 
 /**
  * Sparkle sends "RollScrub/1.0 Sparkle/2.6.0"; keep only the app version.
@@ -27,7 +46,8 @@ const DAY = () => new Date().toISOString().slice(0, 10);
  * under live installs.
  */
 function appVersion(userAgent) {
-  const m = /RollScrub\/(\d+(?:\.\d+){0,2})/.exec(userAgent ?? "");
+  // Bounded, because the caller chooses this string and it becomes a row name.
+  const m = /RollScrub\/(\d{1,4}(?:\.\d{1,4}){0,2})(?![\d.])/.exec(userAgent ?? "");
   return m ? m[1] : null;
 }
 
@@ -124,8 +144,18 @@ function classify(pathname, request) {
       ? { kind: "update-check", name: version }
       : { kind: "update-check-bot", name: "appcast" };
   }
-  if (pathname.startsWith("/releases/") && pathname.endsWith(".zip")) {
-    return { kind: "download", name: pathname.slice("/releases/".length) };
+  if (pathname.startsWith("/releases/")) {
+    const file = pathname.slice("/releases/".length);
+    // Sparkle fetching a release is an install updating itself: usually a
+    // .delta, which nothing counted at all, or the full zip, which was filed
+    // with the crawlers. Counted on its own, it shows an update being
+    // picked up on the day it happens, rather than a day later when the new
+    // version first checks the appcast.
+    const from = appVersion(request.headers.get("user-agent"));
+    if (from && /\.(zip|delta)$/.test(file)) {
+      return { kind: "update-fetch", name: `${file} from ${from}` };
+    }
+    if (file.endsWith(".zip")) return { kind: "download", name: file };
   }
   if (pathname === "/" || pathname === "/index.html") {
     return { kind: "pageview", name: "/" };
@@ -168,6 +198,76 @@ export function buySource(url) {
   return ref === "app" || ref === "cli" ? ref : "site";
 }
 
+/**
+ * Answers a Range request for a release file.
+ *
+ * The asset handler ignores Range here and sends the whole file with a 200,
+ * so a browser resuming an interrupted download got 2.5 MB it would append to
+ * what it already had, or throw away. The files are a few megabytes, so the
+ * slice is cut from the whole body in memory.
+ *
+ * Anything this does not understand gets the untouched response back, which
+ * HTTP allows: a server may always answer a Range request with the full
+ * representation. That covers multiple ranges, a stale If-Range, a compressed
+ * body (whose offsets would not be the file's), and any day the asset handler
+ * starts answering 206 by itself.
+ */
+export async function ranged(request, response) {
+  if (request.method !== "GET" || response.status !== 200 || !response.body) return response;
+  if (response.headers.has("content-encoding")) return response;
+
+  // Said on the plain download too: a browser only offers to resume a
+  // download from a server that told it ranges work.
+  const headers = new Headers(response.headers);
+  headers.set("accept-ranges", "bytes");
+  const whole = () => new Response(response.body, { status: 200, headers });
+
+  const header = request.headers.get("range");
+  if (!header) return whole();
+  // The size comes from the header so that nothing is read into memory until
+  // the answer is known to be a slice, and never for a file big enough to
+  // matter: the cut is made from a buffer, and an unbounded one is a way to
+  // take this Worker down, and the licence proxy with it.
+  const size = Number(response.headers.get("content-length") ?? NaN);
+  if (!Number.isInteger(size) || size <= 0 || size > MAX_RANGED_BYTES) return whole();
+  // Strong comparison only: a weak validator never proves the bytes match.
+  const ifRange = request.headers.get("if-range");
+  if (ifRange && (ifRange.startsWith("W/") || ifRange !== response.headers.get("etag"))) {
+    return whole();
+  }
+  const m = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+  if (!m || (m[1] === "" && m[2] === "")) return whole();
+
+  let start;
+  let end = size - 1;
+  if (m[1] === "") {
+    // "bytes=-500": the last 500 bytes. "-0" asks for nothing, which is 416.
+    start = Number(m[2]) === 0 ? size : Math.max(0, size - Number(m[2]));
+  } else {
+    start = Number(m[1]);
+    if (m[2] !== "") {
+      // An end before the start is not a range at all, and is ignored.
+      if (Number(m[2]) < start) return whole();
+      end = Math.min(Number(m[2]), size - 1);
+    }
+  }
+
+  if (start >= size) {
+    headers.set("content-range", `bytes */${size}`);
+    headers.delete("content-length");
+    return new Response(null, { status: 416, headers });
+  }
+  const bytes = await response.arrayBuffer();
+  // The header and the body disagreeing means the offsets cannot be trusted.
+  if (bytes.byteLength !== size) return new Response(bytes, { status: 200, headers });
+  headers.set("content-range", `bytes ${start}-${end}/${size}`);
+  headers.set("content-length", String(end - start + 1));
+  return new Response(new Uint8Array(bytes, start, end - start + 1), { status: 206, headers });
+}
+
+// Six times the largest release so far.
+const MAX_RANGED_BYTES = 16 * 1024 * 1024;
+
 async function record(env, event, request) {
   if (!env.STATS) return; // binding absent: never break serving over telemetry
   const country = request.cf?.country ?? "??";
@@ -176,7 +276,7 @@ async function record(env, event, request) {
       `INSERT INTO events (day, kind, name, country, count) VALUES (?, ?, ?, ?, 1)
        ON CONFLICT(day, kind, name, country) DO UPDATE SET count = count + 1`
     )
-      .bind(DAY(), event.kind, event.name, country)
+      .bind(dayOf(new Date()), event.kind, event.name, country)
       .run();
   } catch {
     // A failed write must never cost somebody their download.
@@ -285,13 +385,19 @@ async function stats(request, env) {
      GROUP BY name ORDER BY n DESC`
   ).all();
 
+  const updates = await env.STATS.prepare(
+    `${CLEAN} SELECT name, SUM(count) AS n FROM clean WHERE kind = 'update-fetch'
+     GROUP BY name ORDER BY n DESC LIMIT 30`
+  ).all();
+
   const daily = await env.STATS.prepare(
     `${CLEAN} SELECT day,
             SUM(CASE WHEN kind = 'pageview' THEN count ELSE 0 END) AS views,
             SUM(CASE WHEN kind = 'download' THEN count ELSE 0 END) AS downloads,
             SUM(CASE WHEN kind = 'buy-click' THEN count ELSE 0 END) AS buys,
             SUM(CASE WHEN kind = 'purchase' THEN count ELSE 0 END) AS purchases,
-            SUM(CASE WHEN kind = 'update-check' THEN count ELSE 0 END) AS checks
+            SUM(CASE WHEN kind = 'update-check' THEN count ELSE 0 END) AS checks,
+            SUM(CASE WHEN kind = 'update-fetch' THEN count ELSE 0 END) AS updates
      FROM clean GROUP BY day ORDER BY day DESC LIMIT 30`
   ).all();
 
@@ -368,6 +474,14 @@ ${rows(buySources, [(r) => `<td>${esc(r.source)}</td>`, (r) => `<td class="n">${
 <table><tr><th>Version</th><th class="n">Update checks</th></tr>
 ${rows(versions, [(r) => `<td>${esc(r.name)}</td>`, (r) => `<td class="n">${r.n}</td>`])}</table>
 
+<h2>Update downloads</h2>
+<table><tr><th>File, and the version that fetched it</th><th class="n">Fetches</th></tr>
+${rows(updates, [(r) => `<td>${esc(r.name)}</td>`, (r) => `<td class="n">${r.n}</td>`])}</table>
+<p class="muted">Counted from 13 October 2026. An install fetching an update shows
+here at once; it joins "Live installs" under its new version the next time it
+checks, which can be a day later. A download is not proof of an install, and
+one update can count twice if Sparkle falls back from a delta to the full zip.</p>
+
 <h2>By file</h2>
 <table><tr><th>File</th><th class="n">Downloads</th></tr>
 ${rows(files, [(r) => `<td>${esc(r.name)}</td>`, (r) => `<td class="n">${r.n}</td>`])}</table>
@@ -378,7 +492,8 @@ ${rows(countries, [(r) => `<td>${esc(r.country)}</td>`, (r) => `<td class="n">${
 
 <h2>Last 30 days</h2>
 <table><tr><th>Day</th><th class="n">Views</th><th class="n">Downloads</th>
-<th class="n">Buy clicks</th><th class="n">/thanks</th><th class="n">Update checks</th></tr>
+<th class="n">Buy clicks</th><th class="n">/thanks</th><th class="n">Update checks</th>
+<th class="n">Updates</th></tr>
 ${rows(daily, [
   (r) => `<td>${r.day}</td>`,
   (r) => `<td class="n">${r.views}</td>`,
@@ -386,9 +501,11 @@ ${rows(daily, [
   (r) => `<td class="n">${r.buys}</td>`,
   (r) => `<td class="n">${r.purchases}</td>`,
   (r) => `<td class="n">${r.checks}</td>`,
+  (r) => `<td class="n">${r.updates}</td>`,
 ])}</table>
 
-<p class="muted">Daily counts per file, version, source and country. No
+<p class="muted">Days are ${esc(TIME_ZONE)} time, from 13 October 2026; rows before that
+are UTC days. Daily counts per file, version, source and country. No
 addresses, user agents or cookies are recorded, and nothing here identifies a
 person.</p>`);
 }
@@ -432,15 +549,18 @@ export default {
     // /, and the browser's second request is the view. A 304 is a reader
     // reloading a page they have cached, which is a view, but never a
     // download.
-    const response = await env.ASSETS.fetch(request);
-    const served =
-      response.status === 200 || (response.status === 304 && event?.kind !== "download");
+    const fetched = await env.ASSETS.fetch(request);
+    const wholeFile = event?.kind === "download" || event?.kind === "update-fetch";
+    const served = fetched.status === 200 || (fetched.status === 304 && !wholeFile);
+    const response = url.pathname.startsWith("/releases/")
+      ? await ranged(request, fetched)
+      : fetched;
     if (event && served && request.method === "GET" && !request.headers.has("range")) {
       // Update checks are machine traffic by definition and already counted
       // on their own; splitting them would say nothing. Everything else is
       // recorded under its own kind or a "-bot" twin, so that "page views"
       // means people and the crawlers stay visible rather than hidden.
-      const automated = !event.kind.startsWith("update-check") && looksAutomated(request);
+      const automated = !event.kind.startsWith("update-") && looksAutomated(request);
       const kind = automated ? `${event.kind}-bot` : event.kind;
       ctx.waitUntil(record(env, { kind, name: event.name }, request));
 
