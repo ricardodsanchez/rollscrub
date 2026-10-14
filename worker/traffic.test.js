@@ -115,10 +115,9 @@ function site() {
       Object.defineProperty(request, "cf", { value: { country } });
       env.ASSETS = {
         fetch: async () => {
+          // No content-length, as on the live site: the asset handler does
+          // not state one to the Worker.
           const sent = { ...(etag ? { etag } : {}), ...assetHeaders };
-          if (body !== null && !("content-length" in sent)) {
-            sent["content-length"] = String(Buffer.byteLength(body));
-          }
           return new Response(body, { status, headers: sent });
         },
       };
@@ -318,8 +317,15 @@ test("a range this cannot answer exactly gets the whole file instead", async () 
   await whole({ range: "bytes=5-2" });
   // Offsets into a compressed body are not offsets into the file.
   await whole({ range: "bytes=2-5", assetHeaders: { "content-encoding": "gzip" } });
-  // No stated size, or one too large to cut from memory: never buffered.
+  // A stated size too large to cut from memory is never read into it.
   await whole({ range: "bytes=2-5", assetHeaders: { "content-length": "999999999" } });
+
+  // And one that turns out too large while being read still arrives whole,
+  // including the part already looked at.
+  const big = "abcdefgh".repeat(1024 * 1024 + 1);
+  const huge = await s.hit("/releases/RollScrub-9.zip", { body: big, range: "bytes=2-5" });
+  assert.equal(huge.status, 200);
+  assert.equal((await huge.text()) === big, true);
 
   const fresh = await s.hit("/releases/RollScrub-1.4.zip", {
     ...file,

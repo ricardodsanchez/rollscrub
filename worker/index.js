@@ -224,12 +224,6 @@ export async function ranged(request, response) {
 
   const header = request.headers.get("range");
   if (!header) return whole();
-  // The size comes from the header so that nothing is read into memory until
-  // the answer is known to be a slice, and never for a file big enough to
-  // matter: the cut is made from a buffer, and an unbounded one is a way to
-  // take this Worker down, and the licence proxy with it.
-  const size = Number(response.headers.get("content-length") ?? NaN);
-  if (!Number.isInteger(size) || size <= 0 || size > MAX_RANGED_BYTES) return whole();
   // Strong comparison only: a weak validator never proves the bytes match.
   const ifRange = request.headers.get("if-range");
   if (ifRange && (ifRange.startsWith("W/") || ifRange !== response.headers.get("etag"))) {
@@ -237,6 +231,17 @@ export async function ranged(request, response) {
   }
   const m = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
   if (!m || (m[1] === "" && m[2] === "")) return whole();
+  // An end before the start is not a range at all, and is ignored.
+  if (m[1] !== "" && m[2] !== "" && Number(m[2]) < Number(m[1])) return whole();
+
+  // The asset handler does not state a length to the Worker, so the size is
+  // only known by reading. Read with a ceiling: an unbounded buffer is a way
+  // to take this Worker down, and the licence proxy with it.
+  if (Number(response.headers.get("content-length") ?? 0) > MAX_RANGED_BYTES) return whole();
+  const read = await readWithin(response.body, MAX_RANGED_BYTES);
+  if (read.rest) return new Response(read.rest, { status: 200, headers });
+  const bytes = read.bytes;
+  const size = bytes.byteLength;
 
   let start;
   let end = size - 1;
@@ -245,11 +250,7 @@ export async function ranged(request, response) {
     start = Number(m[2]) === 0 ? size : Math.max(0, size - Number(m[2]));
   } else {
     start = Number(m[1]);
-    if (m[2] !== "") {
-      // An end before the start is not a range at all, and is ignored.
-      if (Number(m[2]) < start) return whole();
-      end = Math.min(Number(m[2]), size - 1);
-    }
+    if (m[2] !== "") end = Math.min(Number(m[2]), size - 1);
   }
 
   if (start >= size) {
@@ -257,16 +258,54 @@ export async function ranged(request, response) {
     headers.delete("content-length");
     return new Response(null, { status: 416, headers });
   }
-  const bytes = await response.arrayBuffer();
-  // The header and the body disagreeing means the offsets cannot be trusted.
-  if (bytes.byteLength !== size) return new Response(bytes, { status: 200, headers });
   headers.set("content-range", `bytes ${start}-${end}/${size}`);
   headers.set("content-length", String(end - start + 1));
-  return new Response(new Uint8Array(bytes, start, end - start + 1), { status: 206, headers });
+  return new Response(bytes.subarray(start, end + 1), { status: 206, headers });
 }
 
-// Six times the largest release so far.
-const MAX_RANGED_BYTES = 16 * 1024 * 1024;
+// Three times the largest release so far.
+const MAX_RANGED_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Reads a body into memory, giving up at `limit`. Past the limit it hands
+ * back a stream that replays what was read and then carries on, so the
+ * caller can still send the whole file: nothing is lost by having looked.
+ */
+async function readWithin(body, limit) {
+  const reader = body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    total += value.byteLength;
+    if (total > limit) {
+      return {
+        rest: new ReadableStream({
+          start(controller) {
+            for (const chunk of chunks) controller.enqueue(chunk);
+          },
+          async pull(controller) {
+            const next = await reader.read();
+            if (next.done) controller.close();
+            else controller.enqueue(next.value);
+          },
+          cancel(reason) {
+            return reader.cancel(reason);
+          },
+        }),
+      };
+    }
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { bytes };
+}
 
 async function record(env, event, request) {
   if (!env.STATS) return; // binding absent: never break serving over telemetry
