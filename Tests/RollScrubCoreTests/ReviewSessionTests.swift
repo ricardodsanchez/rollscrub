@@ -173,6 +173,26 @@ final class ReviewSessionTests: XCTestCase {
         XCTAssertEqual(landed.count, 2, "trashed fixtures must land in the test's own Trash")
     }
 
+    /// The redirect is opt-in per test class. A future test that applies
+    /// without it must fail loudly rather than send fixtures, named like real
+    /// photos, to the developer's Trash. Not proved by removing the guard:
+    /// that would put this test's fixture in the real Trash.
+    func testTheRealTrashRefusesToWorkUnderTests() async throws {
+        let result = try scanFixture(count: 1)
+        let session = ReviewSession()
+        session.load(scanResult: result, root: root)
+        session.markAllPending(as: .discard)
+        ReviewSession.trashOverride = nil
+
+        await session.apply(removing: Set(session.markedForDiscard.map(\.id)))
+
+        let item = try XCTUnwrap(session.items.first)
+        XCTAssertTrue(exists(item.candidateURL))
+        guard case .failed(let reason) = item.state, reason.contains("real Trash") else {
+            return XCTFail("expected the real Trash to refuse, got \(item.state)")
+        }
+    }
+
     /// After a successful removal the pair must leave the review queue: gone
     /// from the counts, gone from every filter that drives the sidebar list.
     func testTrashedPairsLeaveTheQueueAndTheCounts() async throws {

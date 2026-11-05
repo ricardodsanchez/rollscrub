@@ -475,7 +475,15 @@ final class ReviewSession: ObservableObject {
     static var trashOverride: (([URL]) async -> [URL: String])?
 
     private static func moveToTrash(_ urls: [URL]) async -> [URL: String] {
-        await withCheckedContinuation { continuation in
+        // Under XCTest the real Trash is the developer's own. A test that
+        // reaches it forgot ScratchStateDirectory.begin(), and failing here
+        // says so, where trashing quietly would litter it on every run.
+        if NSClassFromString("XCTestCase") != nil {
+            return Dictionary(uniqueKeysWithValues: urls.map {
+                ($0, "a test reached the real Trash; call ScratchStateDirectory.begin() in setUp")
+            })
+        }
+        return await withCheckedContinuation { continuation in
             var failures: [URL: String] = [:]
             let group = DispatchGroup()
             for url in urls {
