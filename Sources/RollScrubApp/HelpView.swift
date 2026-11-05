@@ -70,22 +70,31 @@ struct HelpView: View {
                 }
 
                 HelpSection("Photo libraries are left alone") {
-                    HelpText("RollScrub never looks inside a **Photos**, **Lightroom**, "
-                             + "**Aperture** or **Final Cut Pro** library. Each of those "
-                             + "keeps your originals and its own generated copies together "
-                             + "under a database, so the copies are meant to be identical "
-                             + "to files elsewhere — and removing one leaves the app "
-                             + "pointing at a file that is no longer there. Apple's own "
-                             + "guidance is not to alter a photo library's contents in the "
-                             + "Finder at all.")
+                    HelpText("RollScrub never looks inside a library an app manages for "
+                             + "you: **Photos**, **iPhoto**, **Final Cut Pro**, **iMovie**, "
+                             + "**Aperture** and **Lightroom** libraries, **Capture One** "
+                             + "catalogues, and the media folders of **Music** and **TV**. "
+                             + "It won't scan "
+                             + "a folder inside one either. Each of those keeps your "
+                             + "originals and its own copies together under a database, so "
+                             + "the copies are meant to be identical to files elsewhere. "
+                             + "Removing one leaves the app pointing at a file that is no "
+                             + "longer there. Apple's own guidance is not to alter a photo "
+                             + "library's contents in the Finder at all.")
+                    HelpText("**Lightroom Classic** and **Capture One sessions** are "
+                             + "different. They keep your photos in ordinary folders, and "
+                             + "RollScrub scans those folders like any others. If you remove "
+                             + "a photo from one of those folders, the app that tracks it "
+                             + "will show it as missing, so review those pairs with that in "
+                             + "mind.")
                     HelpText("For duplicates **inside** your Photos library, use Photos' "
                              + "own Duplicates view, in the sidebar under Utilities. It "
                              + "merges duplicates rather than deleting files, so keywords, "
                              + "albums and edits survive. Lightroom has duplicate-finding "
                              + "plugins that work the same way, through its catalogue.")
                     HelpText("RollScrub is for everything outside those libraries: exports, "
-                             + "card dumps, backup drives, Downloads, iCloud Drive — where "
-                             + "copies pile up and nothing is keeping track.")
+                             + "card dumps, backup drives, Downloads and iCloud Drive. That's "
+                             + "where copies pile up and nothing is keeping track.")
                 }
 
                 HelpSection("Your progress is saved") {
@@ -95,13 +104,17 @@ struct HelpView: View {
 
                 HelpSection("Command line") {
                     HelpText("RollScrub ships a command-line tool for scripted or very "
-                             + "large sweeps. It writes a text and CSV report and, with "
-                             + "`--move`, sets duplicates aside in a review folder inside "
-                             + "whichever drive each was found on — never deleting, and "
-                             + "reversible with `--undo`.")
+                             + "large sweeps. It writes a text and CSV report. With "
+                             + "`--move`, it sets duplicates aside in a `_duplicates_review` "
+                             + "folder inside each folder you scanned. It never deletes "
+                             + "anything. `--undo` puts the files back where they were, and "
+                             + "leaves any file parked if something new now sits in its "
+                             + "original place.")
                     HelpText("It lives inside this app. To put it on your PATH, choose "
-                             + "**RollScrub → Install Command Line Tool…**, which links it "
-                             + "into `/usr/local/bin` and will ask for your password. Then "
+                             + "**RollScrub → Install Command Line Tool…**. That links it "
+                             + "into `/usr/local/bin`, which usually needs administrator "
+                             + "access, so RollScrub gives you a command to copy and run in "
+                             + "Terminal instead. Terminal asks for your password. Then "
                              + "open a new terminal window:")
                     CodeBlock("rollscrub ~/Pictures \"/Volumes/Extreme Pro\"")
                     HelpText("Run `rollscrub --help` for the full list of options.")

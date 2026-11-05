@@ -25,11 +25,12 @@ Apple silicon and Intel
 - **Nothing moves to a different drive.** The command line tool sets
   duplicates aside on the drive they were found on.
 - **Libraries that apps manage for you are skipped**: Photos, iPhoto, Final
-  Cut, iMovie, Aperture, Lightroom and Capture One libraries, and the media
-  folders of Music and TV. They keep copies of your originals on purpose, and
-  removing one would break the library. RollScrub won't scan a folder inside
-  one either. Lightroom Classic is different: its photos sit in ordinary
-  folders, and RollScrub scans them like any others.
+  Cut, iMovie, Aperture and Lightroom libraries, Capture One catalogues, and
+  the media folders of Music and TV. They keep copies of your originals on
+  purpose, and removing one would break the library. RollScrub won't scan a
+  folder inside one either. Lightroom Classic and Capture One sessions are
+  different: their photos sit in ordinary folders, and RollScrub scans them
+  like any others.
 - **Cloud files that aren't on your Mac are skipped**, so a scan never
   downloads your whole photo library, and their previews say "Not
   downloaded". This is tested with iCloud Drive. Dropbox and OneDrive work the
@@ -48,7 +49,7 @@ rollscrub ~/Pictures "/Volumes/Backup"
 This writes a report of every duplicate to the current folder and leaves your
 files alone. Add `--move` to set the duplicates aside in a `_duplicates_review`
 folder inside each folder you scanned. It asks you to confirm first, and
-prints the `--undo` command that puts everything back. Run `rollscrub --help`
+prints the `--undo` command to put them back. Run `rollscrub --help`
 for everything else.
 
 ## Build it yourself
