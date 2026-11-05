@@ -404,8 +404,8 @@ final class ReviewSession: ObservableObject {
                 SkipRules.managedLibrary(containing: $0.path) != nil
             }) {
                 items[index].state = .failed(
-                    "this pair involves a Photos, Final Cut, Aperture or Lightroom "
-                    + "library, and RollScrub never removes anything from one")
+                    "this pair involves a library managed by an app such as Photos, "
+                    + "iMovie or Final Cut, and RollScrub never removes anything from one")
                 continue
             }
             // An iCloud file that is only a placeholder cannot be compared or

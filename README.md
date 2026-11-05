@@ -22,9 +22,11 @@ reason it exists, and a change that breaks one will not be merged:
 - **It never moves a file to a different drive.**
 - **It checks every byte again just before it moves a file**, not only during
   the scan. Files can change in between.
-- **It never looks inside a Photos, Lightroom, Aperture or Final Cut library.**
-  Those libraries keep copies of your originals on purpose, and removing one
-  breaks the library without any warning.
+- **It never looks inside an app's photo or video library**: Photos, iPhoto,
+  Lightroom, Aperture, Final Cut, iMovie, Capture One, TV or Music. Those
+  libraries keep copies of your originals on purpose, and removing one breaks
+  the library without any warning. Pointing RollScrub at a folder inside one
+  is refused too.
 - **It never reads an iCloud file that isn't downloaded.** Reading one byte
   downloads the whole file, so those files are counted and skipped.
 

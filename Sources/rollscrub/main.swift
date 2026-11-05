@@ -130,7 +130,7 @@ for rootURL in rootURLs {
     }
 }
 
-// Photos, Final Cut, Aperture and Lightroom keep derivatives beside their
+// Photos, Final Cut, iMovie, Lightroom and the rest keep derivatives beside their
 // originals and track both in a catalogue. The walk prunes a library it finds
 // below a root, but a root or --include that is already inside one would be
 // walked in full, and its files offered for removal.

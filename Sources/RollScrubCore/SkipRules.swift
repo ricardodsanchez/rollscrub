@@ -33,13 +33,21 @@ public enum SkipRules {
     /// job this app would otherwise be doing badly.
     /// Lightroom Classic is unaffected: it keeps a .lrcat catalogue beside
     /// ordinary folders of originals, and those folders scan normally. Only
-    /// Lightroom's packaged .lrlibrary manages its contents this way.
+    /// Lightroom's packaged .lrlibrary manages its contents this way. Capture
+    /// One sessions are the same: a .cosessiondb file beside ordinary folders,
+    /// so only its packaged .cocatalog is listed.
     public static let managedLibrarySuffixes = [
         ".fcpbundle",          // Final Cut Pro
         ".photoslibrary",      // Photos
+        ".photolibrary",       // iPhoto, still on disk after Photos migrates it
         ".aplibrary",          // Aperture
         ".migratedaplibrary",  // Aperture, after migration
         ".lrlibrary",          // Lightroom
+        ".imovielibrary",      // iMovie
+        ".theater",            // iMovie Theater, older iMovie's shared copies
+        ".cocatalog",          // Capture One catalogue
+        ".tvlibrary",          // TV
+        ".musiclibrary",       // Music, which can hold music videos
     ]
 
     /// Directories full of machine-generated files that are never anyone's

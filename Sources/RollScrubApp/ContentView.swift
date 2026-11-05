@@ -517,8 +517,8 @@ struct ContentView: View {
         // still land inside one. Its contents belong to the owning app's
         // catalogue, so the scan is refused rather than quietly finding nothing.
         if let inside = urls.first(where: { SkipRules.managedLibrary(containing: $0.path) != nil }) {
-            session.errorMessage = "\(inside.lastPathComponent) is inside a Photos, Final Cut, "
-                + "Aperture or Lightroom library. RollScrub does not scan inside these, "
+            session.errorMessage = "\(inside.lastPathComponent) is inside a library managed by "
+                + "an app such as Photos, iMovie or Final Cut. RollScrub does not scan inside these, "
                 + "because removing anything from one corrupts it. Choose the folder "
                 + "that holds the library instead."
             return

@@ -182,6 +182,30 @@ final class ScannerTests: XCTestCase {
                       "a managed library's own copies are not duplicates to remove")
     }
 
+    /// The same corruption, for every other app that keeps media in a package
+    /// it catalogues. An iPhoto library is still on disk after Photos migrates
+    /// it, holding the same masters as the new library, so a home-folder scan
+    /// pairs the two and offers one of them up for removal.
+    func testEveryKindOfManagedLibraryIsSkipped() throws {
+        let bytes = payload(seed: 46, count: 300_000)
+        try write("Loose/clip.mov", bytes: bytes)
+        let libraries = [
+            "iPhoto Library.photolibrary/Masters/2012/clip.mov",
+            "iMovie Library.imovielibrary/Event/Original Media/clip.mov",
+            "iMovie Theater.theater/Shared/clip.mov",
+            "Capture One.cocatalog/Originals/clip.mov",
+            "TV Library.tvlibrary/Media/clip.mov",
+            "Music Library.musiclibrary/Media/clip.mov",
+        ]
+        for path in libraries { try write(path, bytes: bytes) }
+
+        let result = scan()
+
+        XCTAssertEqual(result.filesScanned, 1,
+                       "only the loose clip is outside a library; found \(result.filesScanned)")
+        XCTAssertTrue(result.groups.isEmpty)
+    }
+
     /// Pruning only happens to directories met on the way down, so a library
     /// handed over as the root itself was walked in full. Photos keeps an
     /// original and its derivative byte-identical in there, and `--move` then
