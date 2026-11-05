@@ -9,6 +9,9 @@ rollscrub_report.csv
 # stay tracked: Cloudflare Pages serves what is committed, so an ignored zip is
 # a download link that 404s.
 /releases/
+# generate_appcast moves deltas it has dropped from the feed here. Nothing
+# links to them, so publishing them would only serve dead files.
+site/releases/old_updates/
 private_keys/
 *.p8
 
