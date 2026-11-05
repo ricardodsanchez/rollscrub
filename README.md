@@ -27,9 +27,11 @@ reason it exists, and a change that breaks one will not be merged:
   libraries keep copies of your originals on purpose, and removing one breaks
   the library without any warning. Pointing RollScrub at a folder inside one
   is refused too.
-- **It never reads a cloud file that isn't downloaded**, from iCloud Drive,
-  Dropbox, OneDrive or Google Drive. Reading one byte downloads the whole
-  file, so those files are counted and skipped.
+- **It never reads a cloud file that isn't downloaded.** Reading one byte
+  downloads the whole file, so those files are counted and skipped, and
+  previews say "Not downloaded" instead of showing them. Checked with iCloud
+  Drive; Dropbox and OneDrive keep online-only files the same way on current
+  macOS. RollScrub also tells macOS to refuse any download it might trigger.
 
 ## Building
 
