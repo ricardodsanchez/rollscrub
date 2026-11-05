@@ -233,6 +233,93 @@ final class ReviewSessionTests: XCTestCase {
         }
     }
 
+    /// The app's Apply is its own path to the Trash, separate from Mover, and
+    /// a review can be built from a saved session or a manifest as well as a
+    /// fresh scan. A pair with either file inside a Photos library must fail
+    /// with a reason rather than send anything to the Trash.
+    func testAPairWithAFileInsideALibraryIsNeverTrashed() async throws {
+        let payload = String(repeating: "library pair", count: 40_000)
+        let loose = try write("Loose/a.jpg", payload)
+        let inside = try write("Photos Library.photoslibrary/originals/0/a.jpg", payload)
+        let otherLoose = try write("Loose/b.jpg", payload + "b")
+        let derivative = try write("Photos Library.photoslibrary/resources/b.jpg", payload + "b")
+        let size = Int64(payload.utf8.count)
+        let result = ScanResult(
+            roots: [root], includes: [], startedAt: Date(), duration: 0,
+            filesScanned: 4, unreadableFiles: 0, notDownloadedFiles: 0,
+            filesRejectedByVerification: 0,
+            groups: [
+                DuplicateGroup(kind: .photo, size: size, keep: loose.path, remove: [inside.path]),
+                DuplicateGroup(kind: .photo, size: size + 1,
+                               keep: derivative.path, remove: [otherLoose.path]),
+            ])
+        let session = ReviewSession()
+        session.load(scanResult: result, root: root)
+        session.markAllPending(as: .discard)
+
+        let trash = root.appendingPathComponent("Trash")
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        ReviewSession.trashOverride = { urls in
+            for url in urls {
+                try? FileManager.default.moveItem(
+                    at: url, to: trash.appendingPathComponent(UUID().uuidString))
+            }
+            return [:]
+        }
+        defer { ReviewSession.trashOverride = nil }
+
+        await session.apply(removing: Set(session.markedForDiscard.map(\.id)))
+
+        XCTAssertTrue(exists(inside), "a file inside a library must never be trashed")
+        XCTAssertTrue(exists(otherLoose), "nor may a file be trashed in favour of a library's copy")
+        XCTAssertEqual(session.items.count, 2)
+        for item in session.items {
+            guard case .failed(let reason) = item.state, reason.contains("library") else {
+                return XCTFail("\(item.filename) should have failed over the library, is \(item.state)")
+            }
+        }
+    }
+
+    /// Versions before the guard could move a library's file out with
+    /// `--include`, mirrored into the review folder as
+    /// `_duplicates_review/Photos Library.photoslibrary/...`, with a keeper
+    /// outside the library. Trashing that parked copy throws away the one
+    /// file that can put the library right; Keep restores it.
+    func testAFileTakenOutOfALibraryByAnOlderVersionIsNotTrashed() async throws {
+        let kept = try write("Loose/a.jpg", "same bytes")
+        let parked = try write(SkipRules.reviewDirectoryName
+            + "/Photos Library.photoslibrary/originals/0/a.jpg", "same bytes")
+        let from = root.appendingPathComponent("Photos Library.photoslibrary/originals/0/a.jpg")
+        let manifest = MoveManifest(root: root.path, createdAt: Date(), records: [
+            MoveRecord(from: from.path, to: parked.path, sizeBytes: 10, verifiedAgainst: kept.path),
+        ])
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let url = reviewDir.appendingPathComponent("_rollscrub_manifest_old.json")
+        try encoder.encode(manifest).write(to: url)
+
+        let session = ReviewSession()
+        session.load(manifestURL: url)
+        session.markAllPending(as: .discard)
+        let trash = root.appendingPathComponent("Trash")
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        ReviewSession.trashOverride = { urls in
+            for url in urls {
+                try? FileManager.default.moveItem(
+                    at: url, to: trash.appendingPathComponent(UUID().uuidString))
+            }
+            return [:]
+        }
+        defer { ReviewSession.trashOverride = nil }
+
+        await session.apply(removing: Set(session.markedForDiscard.map(\.id)))
+
+        XCTAssertTrue(exists(parked), "the copy that can repair the library must not be trashed")
+        guard case .failed(let reason) = session.items.first?.state, reason.contains("library") else {
+            return XCTFail("expected a library refusal, got \(String(describing: session.items.first?.state))")
+        }
+    }
+
     /// Apply works through the batch one file at a time, and the context
     /// menu and Mark All stay usable while it does. Somebody who spots a
     /// photo they want to keep and switches it mid-run must not find it in

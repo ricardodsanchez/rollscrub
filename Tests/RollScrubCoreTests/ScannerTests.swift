@@ -182,6 +182,82 @@ final class ScannerTests: XCTestCase {
                       "a managed library's own copies are not duplicates to remove")
     }
 
+    /// Pruning only happens to directories met on the way down, so a library
+    /// handed over as the root itself was walked in full. Photos keeps an
+    /// original and its derivative byte-identical in there, and `--move` then
+    /// took one of them out, corrupting the library without a word.
+    func testWillNotWalkALibraryGivenAsTheScanRoot() throws {
+        let bytes = payload(seed: 41, count: 300_000)
+        let library = root.appendingPathComponent("Photos Library.photoslibrary")
+        try write("Photos Library.photoslibrary/originals/0/holiday.jpg", bytes: bytes)
+        try write("Photos Library.photoslibrary/resources/derivatives/holiday.jpg", bytes: bytes)
+
+        let result = DuplicateScanner(config: ScanConfig(root: library)).scan()
+
+        XCTAssertEqual(result.filesScanned, 0, "a library passed as the root must not be walked")
+        XCTAssertTrue(result.groups.isEmpty)
+        XCTAssertEqual(result.managedLibraryRoots, [library],
+                       "the report must say what was refused, not show a clean result")
+    }
+
+    /// `rollscrub ~/Pictures --include "Photos Library.photoslibrary/originals"`
+    /// starts the walk inside the library, below the one directory the prune
+    /// would have caught. The other includes must still be scanned: refusing
+    /// one root is not a reason to drop the rest. The suffix is upper case
+    /// because Finder treats it as the same package either way.
+    func testWillNotWalkAnIncludeThatReachesIntoALibrary() throws {
+        let bytes = payload(seed: 42, count: 300_000)
+        try write("Loose/holiday.jpg", bytes: payload(seed: 43, count: 300_000))
+        try write("Old.APLIBRARY/Masters/2019/holiday.jpg", bytes: bytes)
+        try write("Old.APLIBRARY/Masters/2020/holiday.jpg", bytes: bytes)
+
+        let result = DuplicateScanner(config: ScanConfig(
+            root: root, includes: ["Old.APLIBRARY/Masters", "Loose"])).scan()
+
+        XCTAssertEqual(result.filesScanned, 1, "only the include outside the library is walked")
+        XCTAssertTrue(result.groups.isEmpty,
+                      "two masters inside an Aperture library are not duplicates to remove")
+        XCTAssertEqual(result.managedLibraryRoots.map(\.lastPathComponent), ["Masters"])
+    }
+
+    /// The system follows a symlink in the middle of a path, so a root of
+    /// `Linked/originals`, where Linked points at a library, walks the
+    /// library's originals although no part of the path as typed names one.
+    func testWillNotWalkARootThatReachesALibraryThroughASymlink() throws {
+        let bytes = payload(seed: 44, count: 300_000)
+        try write("Photos Library.photoslibrary/originals/0/holiday.jpg", bytes: bytes)
+        try write("Photos Library.photoslibrary/originals/1/holiday.jpg", bytes: bytes)
+        let link = root.appendingPathComponent("Linked")
+        try FileManager.default.createSymbolicLink(
+            at: link, withDestinationURL: root.appendingPathComponent("Photos Library.photoslibrary"))
+
+        let result = DuplicateScanner(config: ScanConfig(
+            root: link.appendingPathComponent("originals"))).scan()
+
+        XCTAssertEqual(result.filesScanned, 0, "a link into a library leads into a library")
+        XCTAssertTrue(result.groups.isEmpty)
+    }
+
+    /// `..` after a symlink goes up from wherever the link led, not from the
+    /// link. `--include "Linked/.."`, with Linked pointing at a library's
+    /// originals, walks the library itself, while the same path tidied up as
+    /// text reads as the harmless folder holding the link.
+    func testWillNotWalkAnIncludeThatClimbsIntoALibraryFromInsideIt() throws {
+        let bytes = payload(seed: 45, count: 300_000)
+        try write("Photos Library.photoslibrary/originals/0/holiday.jpg", bytes: bytes)
+        try write("Photos Library.photoslibrary/resources/holiday.jpg", bytes: bytes)
+        let outer = root.appendingPathComponent("Outer")
+        try FileManager.default.createDirectory(at: outer, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: outer.appendingPathComponent("Linked"),
+            withDestinationURL: root.appendingPathComponent("Photos Library.photoslibrary/originals"))
+
+        let result = DuplicateScanner(config: ScanConfig(root: outer, includes: ["Linked/.."])).scan()
+
+        XCTAssertEqual(result.filesScanned, 0, "Linked/.. is the library, whatever the text says")
+        XCTAssertTrue(result.groups.isEmpty)
+    }
+
     /// A home folder with a few checked-out projects in it holds far more
     /// files under .git, .build and node_modules than everywhere else put
     /// together, and none of them are anyone's photos. Walking them made a

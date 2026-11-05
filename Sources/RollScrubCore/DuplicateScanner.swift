@@ -8,6 +8,8 @@ public final class DuplicateScanner {
     /// Files in iCloud that are not on this Mac, counted during enumeration so
     /// the report can account for them rather than leaving a silent gap.
     private var notDownloaded = 0
+    /// Scan roots refused because they are inside a managed library.
+    private var refusedLibraryRoots: [URL] = []
 
     public init(config: ScanConfig, progress: ((ScanPhase) -> Void)? = nil) {
         self.config = config
@@ -45,7 +47,8 @@ public final class DuplicateScanner {
             unreadableFiles: candidates.count - signed.count,
             notDownloadedFiles: notDownloaded,
             filesRejectedByVerification: clusteredFiles - confirmedFiles,
-            groups: groups
+            groups: groups,
+            managedLibraryRoots: refusedLibraryRoots
         )
     }
 
@@ -65,8 +68,16 @@ public final class DuplicateScanner {
         var files: [MediaFile] = []
         var examined = 0
         notDownloaded = 0
+        refusedLibraryRoots = []
 
         for scanRoot in config.scanRoots {
+            // The walk prunes a library it meets below its starting point but
+            // never looks above it, so a root that is already inside one would
+            // be walked in full. Asked once per root, not per entry.
+            if SkipRules.managedLibrary(containing: scanRoot.path) != nil {
+                refusedLibraryRoots.append(scanRoot)
+                continue
+            }
             guard let enumerator = fm.enumerator(
                 at: scanRoot,
                 includingPropertiesForKeys: keys,

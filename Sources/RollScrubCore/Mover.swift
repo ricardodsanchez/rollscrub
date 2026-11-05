@@ -109,7 +109,8 @@ public final class Mover {
     /// Sets aside every REMOVE file in `groups`.
     ///
     /// A file is moved only when all of these hold: its KEEP counterpart is
-    /// still on disk, neither file is an iCloud placeholder, the review folder
+    /// still on disk, neither file is inside a managed library, neither file
+    /// is an iCloud placeholder, the review folder
     /// is on the file's own volume, the two still compare equal across every
     /// byte, and the destination is unoccupied. Anything else is skipped and
     /// reported. A failure never costs you a file.
@@ -138,6 +139,28 @@ public final class Mover {
                 skipped.append(SkippedMove(path: candidate.path, reason: "no longer on disk"))
                 continue
             }
+
+            // The scanner refuses to walk a library, but a group can reach
+            // here by other routes, so this is the last gate. Moving a file
+            // out of a library corrupts its catalogue. Keeping a library's copy
+            // instead of the user's own is no better: the owning app can
+            // regenerate or delete its derivatives whenever it likes, and the
+            // photo goes with them.
+            if let library = SkipRules.managedLibrary(containing: candidate.path) {
+                skipped.append(SkippedMove(
+                    path: candidate.path,
+                    reason: "is inside \(library.path), a library its app manages; "
+                        + "moving anything out of it corrupts the library"))
+                continue
+            }
+            if let library = SkipRules.managedLibrary(containing: candidate.keep) {
+                skipped.append(SkippedMove(
+                    path: candidate.path,
+                    reason: "the file it duplicates is inside \(library.path), "
+                        + "a library whose app can change or remove it at any time"))
+                continue
+            }
+
             guard let (owningRoot, relative) = rootAndRelativePath(of: candidate.path) else {
                 skipped.append(SkippedMove(
                     path: candidate.path, reason: "is outside every scan root"))
@@ -159,10 +182,10 @@ public final class Mover {
             // folder that links to another drive puts the file on that drive,
             // whatever volume the link itself sits on. Refused when either
             // volume cannot be told.
+            let landingFolder = nearestExistingAncestor(of: destination.deletingLastPathComponent())
             let fileVolume = volumeOf(URL(fileURLWithPath: candidate.path)
                 .deletingLastPathComponent().resolvingSymlinksInPath())
-            let landingVolume = volumeOf(nearestExistingAncestor(
-                of: destination.deletingLastPathComponent()).resolvingSymlinksInPath())
+            let landingVolume = volumeOf(landingFolder.resolvingSymlinksInPath())
             guard let fileVolume, let landingVolume, fileVolume == landingVolume else {
                 skipped.append(SkippedMove(
                     path: candidate.path,
@@ -170,6 +193,21 @@ public final class Mover {
                         ? "could not confirm it is on the same drive as \(reviewDirectory.path)"
                         : "is on a different drive from \(reviewDirectory.path); "
                             + "scan that drive as a root of its own to move it"))
+                continue
+            }
+
+            // Nor into one. A review folder that is a link into a library
+            // would file the user's photo inside a package its app does not
+            // know about. The destination does not exist yet, and symlink
+            // resolution gives up on a missing path, so the deepest folder
+            // that does exist is the one asked about: that is where the file
+            // physically lands. The rest of the path only mirrors where the
+            // file came from, which the checks above have already cleared.
+            if let library = SkipRules.managedLibrary(containing: landingFolder.path) {
+                skipped.append(SkippedMove(
+                    path: candidate.path,
+                    reason: "its review folder leads into \(library.path), "
+                        + "a library its app manages"))
                 continue
             }
 

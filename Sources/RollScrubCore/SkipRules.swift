@@ -64,8 +64,44 @@ public enum SkipRules {
         // only stops the scanner descending.
         if name.hasPrefix(".") && name != "." && name != ".." { return true }
 
+        return isManagedLibrary(named: name)
+    }
+
+    /// True when a directory with this name is a managed library package.
+    /// Case-insensitive, as Finder and the owning apps are.
+    public static func isManagedLibrary(named name: String) -> Bool {
         let lowered = name.lowercased()
         return managedLibrarySuffixes.contains { lowered.hasSuffix($0) }
+    }
+
+    /// The managed library that `path` is, or sits inside, or nil.
+    ///
+    /// The walk prunes a library it meets on the way down, but it never sees
+    /// the folders above its starting point. A scan root or `--include` that
+    /// is already inside a library would be walked in full, and every
+    /// derivative in there offered up for removal, so roots are checked here
+    /// before anything is walked, and files again before anything is moved.
+    ///
+    /// Checked twice: as given, and with symlinks resolved, so a link that
+    /// leads into a library is caught as well as a library under a link.
+    /// Costs a handful of `lstat` calls per path, so it is for roots and move
+    /// candidates, never for every entry of a walk.
+    public static func managedLibrary(containing path: String) -> URL? {
+        let given = URL(fileURLWithPath: path)
+        // Resolved from the path as typed, not after `.standardized`, which
+        // collapses `..` as text. The system follows a link first and then
+        // goes up from wherever it led, so `Linked/..`, with Linked pointing
+        // into a library, is the library itself. A path with any missing part
+        // comes back unresolved, leaving the check on the path as given;
+        // nothing is read or moved from a path that does not exist.
+        for url in [given.standardized, given.resolvingSymlinksInPath()] {
+            // Plain strings: appending to a file URL can stat each component.
+            let components = url.pathComponents
+            guard let index = components.firstIndex(where: isManagedLibrary(named:))
+            else { continue }
+            return URL(fileURLWithPath: NSString.path(withComponents: Array(components[...index])))
+        }
+        return nil
     }
 
     /// True when this file is skipped regardless of its extension.

@@ -57,6 +57,60 @@ final class MoverTests: XCTestCase {
         XCTAssertTrue(exists(keep))
     }
 
+    // MARK: - Managed libraries
+
+    /// The scanner refuses to walk a library, but Mover takes whatever groups
+    /// it is given. If one ever names a file inside a Photos library, moving
+    /// it breaks the catalogue that points at it, and Photos shows a blank
+    /// thumbnail months later with no record of why.
+    func testWillNotMoveAFileOutOfAManagedLibrary() throws {
+        let keep = try write("Loose/holiday.jpg", "same bytes")
+        let inside = try write("Photos Library.photoslibrary/originals/0/holiday.jpg", "same bytes")
+
+        let outcome = try Mover(root: root).move(groups: [group(keep: keep, remove: [inside])])
+
+        XCTAssertTrue(outcome.moved.isEmpty)
+        XCTAssertTrue(exists(inside), "a file inside a library must stay where its app put it")
+        XCTAssertTrue(outcome.skipped.first?.reason.contains("Photos Library.photoslibrary") == true,
+                      "the skip must name the library: \(outcome.skipped.first?.reason ?? "none")")
+    }
+
+    /// The other way round is no safer. Setting the user's own copy aside
+    /// because a library holds the same bytes leaves the photo resting on a
+    /// derivative that Photos may regenerate or purge whenever it likes.
+    func testWillNotSetAFileAsideInFavourOfALibrarysCopy() throws {
+        let inside = try write("Photos Library.photoslibrary/resources/derivatives/a.jpg", "same bytes")
+        let loose = try write("Loose/a.jpg", "same bytes")
+
+        let outcome = try Mover(root: root).move(groups: [group(keep: inside, remove: [loose])])
+
+        XCTAssertTrue(outcome.moved.isEmpty)
+        XCTAssertTrue(exists(loose), "the user's own copy must not be traded for a library's")
+        XCTAssertTrue(outcome.skipped.first?.reason.contains("library") == true,
+                      "unexpected reason: \(outcome.skipped.first?.reason ?? "none")")
+    }
+
+    /// A review folder that is a link into a library, left by a user or by
+    /// some sync tool, makes the move file the user's photo inside a package
+    /// whose app does not know it is there, beside the manifest needed to
+    /// undo it. The file never leaves the drive, so the volume check passes.
+    func testWillNotMoveIntoAManagedLibraryThroughALinkedReviewFolder() throws {
+        let keep = try write("Loose/a.jpg", "same bytes")
+        let dupe = try write("Loose/a copy.jpg", "same bytes")
+        let library = root.appendingPathComponent("Photos Library.photoslibrary/private")
+        try FileManager.default.createDirectory(at: library, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: reviewDir, withDestinationURL: library)
+
+        let outcome = try Mover(root: root).move(groups: [group(keep: keep, remove: [dupe])])
+
+        XCTAssertTrue(outcome.moved.isEmpty)
+        XCTAssertTrue(exists(dupe), "the file must stay where it is")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: library.path), [],
+                       "nothing may be written inside the library")
+        XCTAssertTrue(outcome.skipped.first?.reason.contains("library") == true,
+                      "unexpected reason: \(outcome.skipped.first?.reason ?? "none")")
+    }
+
     // MARK: - The happy path
 
     func testMovesRedundantCopyAndPreservesStructure() throws {

@@ -393,6 +393,21 @@ final class ReviewSession: ObservableObject {
                 items[index].state = .failed("the copy it duplicates is missing")
                 continue
             }
+            // The scanner never walks a library, but items can come from a
+            // saved session or a manifest too. Trashing a file inside a library
+            // corrupts it, and keeping a library's copy instead of the user's
+            // trusts a file its app can remove whenever it likes. A file an
+            // older version took out of a library is parked under a folder
+            // that still carries the library's name, so it is caught here too;
+            // it is the copy that can repair the library, and Keep puts it back.
+            if [item.candidateURL, item.keepURL].contains(where: {
+                SkipRules.managedLibrary(containing: $0.path) != nil
+            }) {
+                items[index].state = .failed(
+                    "this pair involves a Photos, Final Cut, Aperture or Lightroom "
+                    + "library, and RollScrub never removes anything from one")
+                continue
+            }
             // An iCloud file that is only a placeholder cannot be compared or
             // trashed reliably, and the system error for it says nothing useful.
             if let stranded = Self.icloudPlaceholderReason(for: item) {

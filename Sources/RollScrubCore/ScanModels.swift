@@ -15,7 +15,7 @@ public struct ScanConfig {
     }
 
     /// The directories actually walked.
-    var scanRoots: [URL] {
+    public var scanRoots: [URL] {
         includes.isEmpty
             ? roots
             : roots.flatMap { root in includes.map { root.appendingPathComponent($0) } }
@@ -56,6 +56,10 @@ public struct ScanResult {
     /// REMOVE without the verification pass.
     public let filesRejectedByVerification: Int
     public let groups: [DuplicateGroup]
+    /// Scan roots that were, or were inside, a managed library and so were
+    /// not walked at all. The CLI and the app both refuse these before
+    /// scanning; this is the record if something reaches the scanner anyway.
+    public var managedLibraryRoots: [URL] = []
 
     public var redundantFileCount: Int {
         groups.reduce(0) { $0 + $1.remove.count }

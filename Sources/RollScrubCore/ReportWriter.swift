@@ -54,6 +54,10 @@ public enum ReportWriter {
             out += "In iCloud, not here : \(grouped(result.notDownloadedFiles))"
             out += "  (reading one would download it, so they were skipped)\n"
         }
+        for library in result.managedLibraryRoots {
+            out += "Not scanned         : \(library.path)"
+            out += "  (inside a managed library, which its app owns)\n"
+        }
         if result.filesRejectedByVerification > 0 {
             out += "Rejected by verify  : \(grouped(result.filesRejectedByVerification))"
             out += "  (looked identical, differed on full compare)\n"

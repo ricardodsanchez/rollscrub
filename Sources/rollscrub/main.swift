@@ -130,6 +130,22 @@ for rootURL in rootURLs {
     }
 }
 
+// Photos, Final Cut, Aperture and Lightroom keep derivatives beside their
+// originals and track both in a catalogue. The walk prunes a library it finds
+// below a root, but a root or --include that is already inside one would be
+// walked in full, and its files offered for removal.
+for scanRoot in ScanConfig(roots: rootURLs, includes: includes).scanRoots {
+    if let library = SkipRules.managedLibrary(containing: scanRoot.path) {
+        fail("""
+            will not scan \(scanRoot.path)
+              It is inside \(library.path), a library its app manages.
+              Moving files out of a library corrupts it. Use the app's own
+              duplicate tools for what is inside, and scan the folder that
+              holds the library to check everything else.
+            """)
+    }
+}
+
 // MARK: - Scan
 
 func log(_ message: String) {
