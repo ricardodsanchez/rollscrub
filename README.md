@@ -30,8 +30,9 @@ reason it exists, and a change that breaks one will not be merged:
 - **It never reads a cloud file that isn't downloaded.** Reading one byte
   downloads the whole file, so those files are counted and skipped, and
   previews say "Not downloaded" instead of showing them. Checked with iCloud
-  Drive; Dropbox and OneDrive keep online-only files the same way on current
-  macOS. RollScrub also tells macOS to refuse any download it might trigger.
+  Drive. Dropbox and OneDrive use the same macOS system for online-only
+  files, so they are expected to work the same way, but have not been tested.
+  RollScrub also tells macOS to refuse any download it might trigger.
 
 ## Building
 

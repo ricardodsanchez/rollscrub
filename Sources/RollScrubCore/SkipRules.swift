@@ -118,8 +118,9 @@ public enum SkipRules {
     ///
     /// Checked twice: as given, and with symlinks resolved, so a link that
     /// leads into a library is caught as well as a library under a link.
-    /// Costs a handful of `lstat` calls per path, so it is for roots and move
-    /// candidates, never for every entry of a walk.
+    /// Costs a handful of `lstat` calls per path, plus one directory listing
+    /// for each ancestor named like a Music or TV media folder, so it is for
+    /// roots and move candidates, never for every entry of a walk.
     public static func managedLibrary(containing path: String) -> URL? {
         let given = URL(fileURLWithPath: path)
         // Resolved from the path as typed, not after `.standardized`, which

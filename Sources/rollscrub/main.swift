@@ -3,7 +3,10 @@ import Foundation
 
 // Before anything reads a file: an online-only file the checks miss then
 // fails to read instead of downloading in full.
-CloudPlaceholder.refuseDownloadsForThisProcess()
+if !CloudPlaceholder.refuseDownloadsForThisProcess() {
+    FileHandle.standardError.write(Data(
+        "warning: macOS would not block cloud downloads for this run\n".utf8))
+}
 
 let usage = """
 rollscrub — find duplicate photos and videos (read-only)

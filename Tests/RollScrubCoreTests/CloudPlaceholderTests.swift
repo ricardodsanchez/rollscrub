@@ -18,6 +18,26 @@ final class CloudPlaceholderTests: XCTestCase {
                        IOPOL_MATERIALIZE_DATALESS_FILES_OFF)
     }
 
+    /// An undo manifest in an iCloud folder can be evicted like any file.
+    /// With the process refusing downloads, reading it would fail and block
+    /// undo, so manifests are read with downloads allowed on that thread
+    /// alone. The process-wide refusal must still be in force afterwards.
+    func testAllowingDownloadsLiftsTheRefusalForOneReadOnly() throws {
+        let type = IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES
+        let processBefore = getiopolicy_np(type, IOPOL_SCOPE_PROCESS)
+        let threadBefore = getiopolicy_np(type, IOPOL_SCOPE_THREAD)
+        defer { _ = setiopolicy_np(type, IOPOL_SCOPE_PROCESS, processBefore) }
+        CloudPlaceholder.refuseDownloadsForThisProcess()
+
+        let inside = CloudPlaceholder.allowingDownloads { getiopolicy_np(type, IOPOL_SCOPE_THREAD) }
+
+        XCTAssertEqual(inside, IOPOL_MATERIALIZE_DATALESS_FILES_ON)
+        XCTAssertEqual(getiopolicy_np(type, IOPOL_SCOPE_THREAD), threadBefore,
+                       "the thread must go back to what it was")
+        XCTAssertEqual(getiopolicy_np(type, IOPOL_SCOPE_PROCESS),
+                       IOPOL_MATERIALIZE_DATALESS_FILES_OFF, "the process refusal stays")
+    }
+
     /// The real lookups, against a real online-only file. A test cannot make
     /// one, so it is opt-in: point ROLLSCRUB_DATALESS_FILE at a small file
     /// that iCloud, Dropbox or OneDrive keeps online only (`ls -lO` shows

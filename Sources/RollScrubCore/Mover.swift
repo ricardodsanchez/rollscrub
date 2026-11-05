@@ -309,7 +309,9 @@ public final class Mover {
     public static func readManifest(at url: URL) throws -> MoveManifest {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode(MoveManifest.self, from: try Data(contentsOf: url))
+        // Small, and needed for undo wherever it lives, so it may download.
+        let data = try CloudPlaceholder.allowingDownloads { try Data(contentsOf: url) }
+        return try decoder.decode(MoveManifest.self, from: data)
     }
 
     // MARK: - Paths

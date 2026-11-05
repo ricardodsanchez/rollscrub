@@ -73,6 +73,24 @@ public enum CloudPlaceholder {
             IOPOL_MATERIALIZE_DATALESS_FILES_OFF) == 0
     }
 
+    /// Runs `body` with downloads allowed again, on this thread only. For the
+    /// few small files RollScrub must read wherever they live: an undo
+    /// manifest or saved review state in an iCloud folder can be evicted
+    /// like anything else, and refusing to download a few kilobytes there
+    /// would stand between the user and undo. A thread's own setting wins
+    /// over the process's (checked on a real iCloud file). `body` must not
+    /// suspend, so it cannot resume on another thread.
+    public static func allowingDownloads<T>(_ body: () throws -> T) rethrows -> T {
+        let type = IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES
+        let before = getiopolicy_np(type, IOPOL_SCOPE_THREAD)
+        _ = setiopolicy_np(type, IOPOL_SCOPE_THREAD, IOPOL_MATERIALIZE_DATALESS_FILES_ON)
+        defer {
+            _ = setiopolicy_np(type, IOPOL_SCOPE_THREAD,
+                               before < 0 ? IOPOL_MATERIALIZE_DATALESS_FILES_DEFAULT : before)
+        }
+        return try body()
+    }
+
     static func isDataless(flags: UInt32) -> Bool {
         flags & UInt32(SF_DATALESS) != 0
     }

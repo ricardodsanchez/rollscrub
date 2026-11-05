@@ -545,7 +545,9 @@ final class ReviewSession: ObservableObject {
     }
 
     private func applySavedDecisions() {
-        guard let stateURL, let data = try? Data(contentsOf: stateURL),
+        // Small, and lost decisions are worse than a few kilobytes downloaded.
+        guard let stateURL,
+              let data = try? CloudPlaceholder.allowingDownloads({ try Data(contentsOf: stateURL) }),
               let saved = try? JSONDecoder().decode([String: ReviewItem.Decision].self, from: data)
         else { return }
         for index in items.indices {
