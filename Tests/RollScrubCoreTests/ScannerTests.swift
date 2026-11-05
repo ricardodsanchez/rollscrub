@@ -232,6 +232,31 @@ final class ScannerTests: XCTestCase {
                        "only media files may cost a cloud lookup")
     }
 
+    /// Music and TV keep their media beside the library package, not in it,
+    /// and find each file by its path. A home-folder scan pairs a music video
+    /// in there with the copy you downloaded, and moving the Music one leaves
+    /// a track that says it cannot be found. A Media folder of your own, with
+    /// no library beside it, must still be scanned.
+    func testMusicTVAndITunesMediaFoldersAreSkipped() throws {
+        let bytes = payload(seed: 48, count: 300_000)
+        try write("Downloads/video.mov", bytes: bytes)
+        try write("Music/Music/Music Library.musiclibrary/Library.musicdb", bytes: Data("db".utf8))
+        try write("Music/Music/Media.localized/Music Videos/video.mov", bytes: bytes)
+        try write("Movies/TV/TV Library.tvlibrary/Library.tvdb", bytes: Data("db".utf8))
+        try write("Movies/TV/Media.localized/Home Videos/video.mov", bytes: bytes)
+        try write("Music/iTunes/iTunes Library.itl", bytes: Data("itl".utf8))
+        try write("Music/iTunes/iTunes Media/Movies/video.mov", bytes: bytes)
+        try write("Projects/Site/Media/video.mov", bytes: bytes)
+
+        let result = scan()
+
+        XCTAssertEqual(result.filesScanned, 2,
+                       "only Downloads and the ordinary Media folder are scanned")
+        XCTAssertEqual(Set(result.groups.flatMap(\.allPaths).map {
+            URL(fileURLWithPath: $0).deletingLastPathComponent().lastPathComponent
+        }), ["Downloads", "Media"])
+    }
+
     /// Pruning only happens to directories met on the way down, so a library
     /// handed over as the root itself was walked in full. Photos keeps an
     /// original and its derivative byte-identical in there, and `--move` then

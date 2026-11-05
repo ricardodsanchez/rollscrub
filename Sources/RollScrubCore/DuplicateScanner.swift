@@ -108,7 +108,7 @@ public final class DuplicateScanner {
                 let name = values.name ?? url.lastPathComponent
 
                 if values.isDirectory == true {
-                    if SkipRules.shouldPrune(directoryNamed: name) {
+                    if SkipRules.shouldPrune(directoryNamed: name) || SkipRules.isAppMediaFolder(url) {
                         enumerator.skipDescendants()
                     }
                     continue

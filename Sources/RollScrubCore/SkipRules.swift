@@ -46,9 +46,34 @@ public enum SkipRules {
         ".imovielibrary",      // iMovie
         ".theater",            // iMovie Theater, older iMovie's shared copies
         ".cocatalog",          // Capture One catalogue
-        ".tvlibrary",          // TV
-        ".musiclibrary",       // Music, which can hold music videos
+        ".tvlibrary",          // TV's database; its media is beside it, see below
+        ".musiclibrary",       // Music's database; likewise
     ]
+
+    /// Music and TV keep their media in an ordinary folder next to the
+    /// library package, not inside it: `~/Music/Music/Media.localized` beside
+    /// `Music Library.musiclibrary`, `~/Movies/TV/Media.localized` beside
+    /// `TV Library.tvlibrary`, and on a Mac upgraded from iTunes,
+    /// `iTunes Media` beside `iTunes Library.itl`. Each app tracks those
+    /// files by path, so moving one breaks its entry. Such a folder is only
+    /// treated as managed when one of these sits beside it; a folder of your
+    /// own called Media is scanned as usual.
+    static let appMediaFolderNames: Set<String> = ["media", "media.localized", "itunes media"]
+    static let appMediaOwnerSuffixes = [".musiclibrary", ".tvlibrary", ".itl"]
+
+    /// True when `url` is a Music, TV or iTunes media folder. Lists the parent
+    /// only for a folder with one of those three names, so it costs one
+    /// directory read per such folder and nothing for any other.
+    public static func isAppMediaFolder(_ url: URL) -> Bool {
+        guard appMediaFolderNames.contains(url.lastPathComponent.lowercased()) else { return false }
+        let parent = url.deletingLastPathComponent().path
+        guard let siblings = try? FileManager.default.contentsOfDirectory(atPath: parent)
+        else { return false }
+        return siblings.contains { sibling in
+            let lowered = sibling.lowercased()
+            return appMediaOwnerSuffixes.contains { lowered.hasSuffix($0) }
+        }
+    }
 
     /// Directories full of machine-generated files that are never anyone's
     /// photos, and are frequently enormous. A Documents folder with a few
@@ -82,7 +107,8 @@ public enum SkipRules {
         return managedLibrarySuffixes.contains { lowered.hasSuffix($0) }
     }
 
-    /// The managed library that `path` is, or sits inside, or nil.
+    /// The managed library, or Music, TV or iTunes media folder, that `path`
+    /// is, or sits inside, or nil.
     ///
     /// The walk prunes a library it meets on the way down, but it never sees
     /// the folders above its starting point. A scan root or `--include` that
@@ -105,9 +131,11 @@ public enum SkipRules {
         for url in [given.standardized, given.resolvingSymlinksInPath()] {
             // Plain strings: appending to a file URL can stat each component.
             let components = url.pathComponents
-            guard let index = components.firstIndex(where: isManagedLibrary(named:))
-            else { continue }
-            return URL(fileURLWithPath: NSString.path(withComponents: Array(components[...index])))
+            for (index, name) in components.enumerated() {
+                let folder = URL(fileURLWithPath: NSString.path(
+                    withComponents: Array(components[...index])))
+                if isManagedLibrary(named: name) || isAppMediaFolder(folder) { return folder }
+            }
         }
         return nil
     }

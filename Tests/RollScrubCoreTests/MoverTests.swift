@@ -111,6 +111,21 @@ final class MoverTests: XCTestCase {
                       "unexpected reason: \(outcome.skipped.first?.reason ?? "none")")
     }
 
+    /// The same Music media folder, reached by a group that did not come
+    /// from the walk, or by a scan root inside it.
+    func testWillNotMoveAFileOutOfMusicsMediaFolder() throws {
+        try write("Music/Music Library.musiclibrary/Library.musicdb", "db")
+        let inside = try write("Music/Media.localized/Music Videos/a.mov", "same bytes")
+        let keep = try write("Downloads/a.mov", "same bytes")
+
+        let outcome = try Mover(root: root).move(groups: [group(keep: keep, remove: [inside])])
+
+        XCTAssertTrue(outcome.moved.isEmpty)
+        XCTAssertTrue(exists(inside), "Music finds this file by its path")
+        XCTAssertNotNil(SkipRules.managedLibrary(containing: inside.path))
+        XCTAssertNil(SkipRules.managedLibrary(containing: keep.path))
+    }
+
     // MARK: - The happy path
 
     func testMovesRedundantCopyAndPreservesStructure() throws {
