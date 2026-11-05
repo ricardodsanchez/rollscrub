@@ -27,6 +27,9 @@ public enum ContentSignature {
         let fd = open(path, O_RDONLY)
         guard fd >= 0 else { return nil }
         defer { close(fd) }
+        // A file can go online-only at any point after the scan saw it.
+        // Opening it is free; reading it would download it.
+        guard !CloudPlaceholder.isNotDownloaded(openFile: fd) else { return nil }
 
         let capacity = min(Int(size), blockSize)
         let buffer = UnsafeMutableRawPointer.allocate(byteCount: max(capacity, 1), alignment: 64)
@@ -72,6 +75,11 @@ public enum ContentSignature {
         let fdB = open(pathB, O_RDONLY)
         guard fdB >= 0 else { return false }
         defer { close(fdB) }
+        // Checked on the files actually opened, so neither a symlink nor an
+        // eviction since the last check can slip a download past it.
+        guard !CloudPlaceholder.isNotDownloaded(openFile: fdA),
+              !CloudPlaceholder.isNotDownloaded(openFile: fdB)
+        else { return false }
 
         // One-shot sequential streaming: read ahead, and keep these pages out
         // of the unified buffer cache so a 250 GB pass does not evict

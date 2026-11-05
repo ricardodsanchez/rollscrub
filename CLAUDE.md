@@ -68,7 +68,7 @@ Specific traps, each of which has already happened:
 
 ## Tests
 
-`swift test` — 101 tests, and they run in under a second. Keep it that way.
+`swift test` — 103 tests, and they run in under a second. Keep it that way.
 
 `npm test` — 16 tests over the Worker in `worker/index.js`: what gets counted,
 the person-or-crawler split, the stats page, and Range requests.

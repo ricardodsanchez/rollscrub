@@ -1,3 +1,4 @@
+import RollScrubCore
 import AppKit
 import SwiftUI
 
@@ -7,6 +8,13 @@ struct RollScrubApp: App {
     @StateObject private var session = ReviewSession()
     @StateObject private var updater = Updater()
     @Environment(\.openWindow) private var openWindow
+
+    init() {
+        // Thumbnails, metadata and the byte-for-byte check all read files in
+        // this process. An online-only file the checks miss then fails to
+        // read instead of downloading in full.
+        CloudPlaceholder.refuseDownloadsForThisProcess()
+    }
 
     /// Reports what happened in an alert, because a menu item that silently
     /// succeeds and a menu item that silently fails look identical — and this

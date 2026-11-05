@@ -3,14 +3,15 @@ import Foundation
 /// Whether a file is kept in the cloud but not actually on this Mac.
 ///
 /// Reading a single byte of such a file downloads all of it, so anything that
-/// is about to read or move a file asks this first. iCloud Drive, Dropbox,
-/// OneDrive and Google Drive all keep online-only files the same way on
-/// current macOS: as "dataless" files, which the file system marks with
-/// `SF_DATALESS`. That mark is read with one `lstat`, about 5 µs, and is
-/// asked first. Only a file without it goes on to iCloud's own status, a
-/// round trip to the file provider daemon costing about a millisecond in an
-/// iCloud folder, which still covers anything iCloud reports that the mark
-/// does not.
+/// is about to read or move a file asks this first. Current macOS keeps
+/// online-only files from iCloud Drive as "dataless" files, which the file
+/// system marks with `SF_DATALESS` (checked on real files). Dropbox and
+/// OneDrive run on the same File Provider system and keep theirs the same
+/// way; no copy of either was available to check. That mark is read with
+/// one `stat`, about 5 µs, and is asked first. Only a file without it goes on
+/// to iCloud's own status, a round trip to the file provider daemon costing
+/// about a millisecond in an iCloud folder, which still covers anything
+/// iCloud reports that the mark does not.
 public enum CloudPlaceholder {
 
     /// True when `path` is an online-only file. A status the cloud does not
@@ -33,7 +34,7 @@ public enum CloudPlaceholder {
         flags: UInt32?,
         cloudStatus: () -> (isUbiquitous: Bool?, status: URLUbiquitousItemDownloadingStatus?)
     ) -> Bool {
-        if let flags, flags & UInt32(SF_DATALESS) != 0 { return true }
+        if let flags, isDataless(flags: flags) { return true }
         let cloud = cloudStatus()
         return isNotDownloaded(isUbiquitous: cloud.isUbiquitous, status: cloud.status)
     }
@@ -49,11 +50,39 @@ public enum CloudPlaceholder {
         return status != .current
     }
 
-    /// The file's own flags, without following a symlink, or nil when it
-    /// cannot be read. `lstat` reads the inode only; it never downloads.
+    /// True when a file already opened for reading is online-only. Asked by
+    /// everything that reads file contents, right after `open` and before the
+    /// first read: opening a dataless file does not download it, reading
+    /// does, and this leaves no gap between the check and the open.
+    public static func isNotDownloaded(openFile fd: Int32) -> Bool {
+        var info = stat()
+        guard fstat(fd, &info) == 0 else { return false }
+        return isDataless(flags: info.st_flags)
+    }
+
+    /// Makes the kernel refuse, rather than perform, any download this
+    /// process would trigger by reading an online-only file: the read fails
+    /// with EDEADLK and the file stays in the cloud (checked on a real iCloud
+    /// file). The checks above decide what to skip; this is what makes a
+    /// missed one fail instead of downloading. Called once at launch by the
+    /// app and the CLI. Returns false if the system would not set it.
+    @discardableResult
+    public static func refuseDownloadsForThisProcess() -> Bool {
+        setiopolicy_np(
+            IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_PROCESS,
+            IOPOL_MATERIALIZE_DATALESS_FILES_OFF) == 0
+    }
+
+    static func isDataless(flags: UInt32) -> Bool {
+        flags & UInt32(SF_DATALESS) != 0
+    }
+
+    /// The flags of the file `path` leads to, following a symlink the way the
+    /// read will, or nil when it cannot be read. `stat` reads the inode only;
+    /// it never downloads.
     private static func fileFlags(_ path: String) -> UInt32? {
         var info = stat()
-        guard lstat(path, &info) == 0 else { return nil }
+        guard stat(path, &info) == 0 else { return nil }
         return info.st_flags
     }
 }

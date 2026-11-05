@@ -1,6 +1,10 @@
 import RollScrubCore
 import Foundation
 
+// Before anything reads a file: an online-only file the checks miss then
+// fails to read instead of downloading in full.
+CloudPlaceholder.refuseDownloadsForThisProcess()
+
 let usage = """
 rollscrub — find duplicate photos and videos (read-only)
 
