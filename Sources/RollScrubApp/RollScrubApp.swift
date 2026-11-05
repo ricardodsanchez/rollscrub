@@ -6,7 +6,6 @@ struct RollScrubApp: App {
     // Owned here so the menu bar can drive the same session the window shows.
     @StateObject private var session = ReviewSession()
     @StateObject private var updater = Updater()
-    @StateObject private var license = LicenseModel()
     @Environment(\.openWindow) private var openWindow
 
     /// Reports what happened in an alert, because a menu item that silently
@@ -18,7 +17,7 @@ struct RollScrubApp: App {
         case .installed:
             alert.messageText = "Command line tool installed"
             alert.informativeText = "Open a new terminal window and run "
-                + "`rollscrub --help`. It uses the licence you activated here."
+                + "`rollscrub --help`."
         case .alreadyInstalled:
             alert.messageText = "Already installed"
             alert.informativeText = "`rollscrub` already points at this copy of "
@@ -43,19 +42,7 @@ struct RollScrubApp: App {
 
     var body: some Scene {
         Window("RollScrub Review", id: "review") {
-            ContentView(session: session, license: license)
-                .task {
-                    // At launch, then an hourly wake for as long as the window
-                    // is open. revalidateQuietly() reaches the network at most
-                    // once a day whatever the outcome, so the wake costs a
-                    // keychain read; it is what lets a session left open for
-                    // weeks notice a refund or the end of the grace window
-                    // instead of waiting for a relaunch.
-                    while !Task.isCancelled {
-                        license.revalidateQuietly()
-                        try? await Task.sleep(for: .seconds(60 * 60))
-                    }
-                }
+            ContentView(session: session)
         }
         .windowToolbarStyle(.unified)
         .commands {
@@ -79,13 +66,6 @@ struct RollScrubApp: App {
                 Button("About RollScrub") { openWindow(id: "about") }
                 Button("Check for Updates…") { updater.checkForUpdates() }
                     .disabled(!updater.canCheckForUpdates)
-
-                Divider()
-
-                Button(license.isPro ? "Licence…" : "Unlock Removal…") {
-                    license.unlockContext = nil
-                    openWindow(id: "license")
-                }
 
                 Divider()
 
@@ -129,12 +109,6 @@ struct RollScrubApp: App {
         // absent from the Window menu's document list.
         Window("About RollScrub", id: "about") {
             AboutView()
-        }
-        .windowResizability(.contentSize)
-        .defaultPosition(.center)
-
-        Window(license.isPro ? "Licence" : "Unlock Removal", id: "license") {
-            LicenseView(model: license)
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)

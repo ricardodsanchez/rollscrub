@@ -10,8 +10,8 @@
 	"main": "worker/index.js",
 	"compatibility_date": "2026-09-12",
 	// rollscrub.com is the only way in. Left on, workers.dev and per-version
-	// preview URLs would publish the paid installer and the whole site at
-	// guessable hostnames, and serve identical content from several domains.
+	// preview URLs would publish the whole site at guessable hostnames and
+	// serve identical content from several domains.
 	"workers_dev": false,
 	"preview_urls": false,
 	"assets": {
@@ -23,20 +23,6 @@
 		// Worker never runs for the two paths it exists to count.
 		"run_worker_first": true
 	},
-	// Throttles the licence proxy, which is unauthenticated by nature and
-	// forwards to a third-party API we are billed and rate-limited on. Being
-	// throttled answers "could not check", never "refused", so it can slow an
-	// abuser without ever costing a customer the licence they bought.
-	"ratelimits": [
-		{
-			"name": "LICENSE_RATE_LIMIT",
-			"namespace_id": "1001",
-			// Per address per action. A person activates three times in the
-			// life of a licence and re-checks occasionally; 20 a minute is
-			// unreachable by hand and useless for hammering.
-			"simple": { "limit": 20, "period": 60 }
-		}
-	],
 	"d1_databases": [
 		{
 			"binding": "STATS",

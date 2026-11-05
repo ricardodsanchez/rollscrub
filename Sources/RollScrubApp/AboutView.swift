@@ -5,6 +5,8 @@ import SwiftUI
 enum AppInfo {
     static let name = "RollScrub"
     static let website = URL(string: "https://rollscrub.com")!
+    static let source = URL(string: "https://github.com/ricardodsanchez/rollscrub")!
+    static let licence = URL(string: "https://www.gnu.org/licenses/gpl-3.0.html")!
     static let supportEmail = "support@rollscrub.com"
 
     static var version: String {
@@ -56,13 +58,22 @@ struct AboutView: View {
 
             HStack(spacing: 14) {
                 Link("Website", destination: AppInfo.website)
+                Link("Source Code", destination: AppInfo.source)
+                Link("Licence", destination: AppInfo.licence)
                 Link("Support", destination: URL(string: "mailto:\(AppInfo.supportEmail)")!)
             }
             .font(.callout)
 
-            Text(AppInfo.copyright)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+            // The notice the GPL asks an interactive program to show: who
+            // holds the copyright, that there is no warranty, and where to
+            // read the licence (the Licence link above; a copy also ships in
+            // Contents/Resources).
+            VStack(spacing: 2) {
+                Text(AppInfo.copyright)
+                Text("Free software under the GNU GPL v3. No warranty.")
+            }
+            .font(.caption)
+            .foregroundStyle(.tertiary)
         }
         .padding(28)
         .frame(width: 380)

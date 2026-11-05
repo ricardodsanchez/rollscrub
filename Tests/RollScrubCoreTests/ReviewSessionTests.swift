@@ -140,7 +140,7 @@ final class ReviewSessionTests: XCTestCase {
         // Break one of them so it cannot be removed.
         let doomed = session.items[0]
         try FileManager.default.removeItem(at: doomed.keepURL)
-        await session.apply(removing: true)
+        await session.apply(removing: Set(session.markedForDiscard.map(\.id)))
 
         XCTAssertEqual(session.failedCount, 1)
         let failed = try XCTUnwrap(session.item(id: doomed.id))
@@ -167,7 +167,7 @@ final class ReviewSessionTests: XCTestCase {
         XCTAssertEqual(session.undecidedCount, 0)
         XCTAssertEqual(session.markedForDiscard.count, 3)
 
-        await session.apply(removing: true)
+        await session.apply(removing: Set(session.markedForDiscard.map(\.id)))
 
         XCTAssertEqual(session.trashedCount, 3, "all three should have been trashed")
         XCTAssertEqual(session.failedCount, 0)
@@ -202,7 +202,7 @@ final class ReviewSessionTests: XCTestCase {
         let item = session.items[0]
         session.mark(item.id, as: .keep)
 
-        await session.apply(removing: true)
+        await session.apply(removing: Set(session.markedForDiscard.map(\.id)))
 
         XCTAssertTrue(exists(item.candidateURL), "keeping must not move the file")
         XCTAssertTrue(exists(item.keepURL))
@@ -217,7 +217,7 @@ final class ReviewSessionTests: XCTestCase {
         session.mark(item.id, as: .discard)
 
         try FileManager.default.removeItem(at: item.keepURL)
-        await session.apply(removing: true)
+        await session.apply(removing: Set(session.markedForDiscard.map(\.id)))
 
         XCTAssertTrue(exists(item.candidateURL), "must not delete the last remaining copy")
         guard case .failed = session.item(id: item.id)?.state else {
@@ -233,7 +233,7 @@ final class ReviewSessionTests: XCTestCase {
         session.mark(item.id, as: .discard)
 
         try Data("something else entirely".utf8).write(to: item.candidateURL)
-        await session.apply(removing: true)
+        await session.apply(removing: Set(session.markedForDiscard.map(\.id)))
 
         XCTAssertTrue(exists(item.candidateURL), "a changed file must not be removed")
         guard case .failed = session.item(id: item.id)?.state else {
@@ -296,16 +296,17 @@ final class ReviewSessionTests: XCTestCase {
         let item = session.items[0]
         session.mark(item.id, as: .keep)
 
-        await session.apply(removing: true)
+        await session.apply(removing: Set(session.markedForDiscard.map(\.id)))
 
         XCTAssertTrue(exists(URL(fileURLWithPath: item.originalPath!)))
         XCTAssertEqual(session.item(id: item.id)?.state, .restored)
     }
 
-    /// Undo is never held behind a licence. One file marked to go back and
-    /// another marked for the Trash, on a Mac with no licence: the restore
-    /// must happen, and the other file must not move at all.
-    func testARestoreGoesThroughWithoutALicenceEvenBesideARemoval() async throws {
+    /// The confirmation alert is the consent. If someone confirms an alert that
+    /// only offered to put a file back, a file marked for the Trash in the
+    /// same queue must not move: they never agreed to that. The restore still
+    /// happens, because undo is never held back by anything else in the queue.
+    func testARestoreGoesThroughWithoutMovingAFileTheAlertNeverOffered() async throws {
         let url = try makeManifest(count: 2)
         let session = ReviewSession()
         session.load(manifestURL: url)
@@ -313,42 +314,32 @@ final class ReviewSessionTests: XCTestCase {
         session.mark(back.id, as: .keep)
         session.mark(gone.id, as: .discard)
 
-        let plan = session.applyPlan(removalUnlocked: false)
-        XCTAssertEqual(
-            plan, ReviewSession.ApplyPlan(confirms: true, removes: false, opensUnlock: true))
-        await session.apply(removing: plan.removes)
+        await session.apply(removing: [])
 
         XCTAssertTrue(exists(URL(fileURLWithPath: back.originalPath!)))
         XCTAssertEqual(session.item(id: back.id)?.state, .restored)
-        XCTAssertTrue(exists(gone.candidateURL), "an unlicensed apply moved a file marked for removal")
+        XCTAssertTrue(exists(gone.candidateURL), "a file the alert never offered to remove was moved")
         XCTAssertEqual(session.markedForDiscard.map(\.id), [gone.id])
     }
 
-    /// The rest of what the Apply button can do. Removal alone with no licence
-    /// asks nothing and only offers the licence; with one, everything marked
-    /// is confirmed first; and nothing marked means nothing happens.
-    func testApplyAsksFirstAndOnlyRemovalWaitsOnALicence() throws {
-        let url = try makeManifest(count: 2)
+    /// The confirmation alert names what goes to the Trash, and that is the
+    /// consent. A file marked while the alert sat open, by a menu shortcut or
+    /// "Mark All Remaining for Trash", was never offered. If it went anyway,
+    /// confirming "Move 1 file to the Trash" could move hundreds.
+    func testOnlyTheFilesTheAlertOfferedGoToTheTrash() async throws {
+        let result = try scanFixture(count: 2)
         let session = ReviewSession()
-        session.load(manifestURL: url)
-        typealias Plan = ReviewSession.ApplyPlan
+        session.load(scanResult: result, root: root)
+        let offered = session.items[0], late = session.items[1]
+        session.mark(offered.id, as: .discard)
+        let consent = Set(session.markedForDiscard.map(\.id))
 
-        XCTAssertEqual(
-            session.applyPlan(removalUnlocked: false),
-            Plan(confirms: false, removes: false, opensUnlock: false))
+        session.mark(late.id, as: .discard)
+        await session.apply(removing: consent)
 
-        session.mark(session.items[0].id, as: .discard)
-        XCTAssertEqual(
-            session.applyPlan(removalUnlocked: false),
-            Plan(confirms: false, removes: false, opensUnlock: true))
-        XCTAssertEqual(
-            session.applyPlan(removalUnlocked: true),
-            Plan(confirms: true, removes: true, opensUnlock: false))
-
-        session.mark(session.items[0].id, as: .keep)
-        XCTAssertEqual(
-            session.applyPlan(removalUnlocked: false),
-            Plan(confirms: true, removes: false, opensUnlock: false))
+        XCTAssertEqual(session.item(id: offered.id)?.state, .trashed)
+        XCTAssertTrue(exists(late.candidateURL), "a file marked after the alert opened was moved")
+        XCTAssertEqual(session.markedForDiscard.map(\.id), [late.id])
     }
 
     func testFindsNewestManifestFromDriveRoot() throws {

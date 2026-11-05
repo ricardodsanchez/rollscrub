@@ -16,8 +16,6 @@
  * survives. See looksAutomated().
  */
 
-import { license } from "./license.js";
-
 /**
  * The calendar day a request is filed under, as its one reader lives it.
  * Filed by UTC, an evening's traffic on the US west coast landed on tomorrow's
@@ -127,7 +125,7 @@ const OUR_HOSTS = new Set([
  */
 export function isOutsideSite(host) {
   if (!host || OUR_HOSTS.has(host)) return false;
-  // buy. and anything else we ever hang off the domain.
+  // Anything we ever hang off the domain.
   if (host.endsWith(".rollscrub.com") || host.endsWith(".rollscrub.app")) return false;
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return false;
   return !host.includes(":"); // IPv6, which URL spells "[::1]"
@@ -160,42 +158,7 @@ function classify(pathname, request) {
   if (pathname === "/" || pathname === "/index.html") {
     return { kind: "pageview", name: "/" };
   }
-  if (pathname === "/thanks") {
-    // Only the extensionless path: the asset handler's default html_handling
-    // redirects /thanks.html to /thanks, and with run_worker_first this
-    // Worker runs on both the original request and the redirected one, so
-    // matching both paths here would count one visit twice. Every other link
-    // on the site (changelog, privacy, terms) already points at the
-    // extensionless form, so Creem's own success URL is almost certainly
-    // this one — but if it were ever set to the .html form, that one hit
-    // would go uncounted rather than double-counted, which is the safer
-    // direction to be wrong in.
-    //
-    // Reached only after Creem sends a buyer back here, so a view here is the
-    // closest thing to a confirmed sale this site can see without a webhook —
-    // a proxy, not a ledger: nothing here confirms the payment actually
-    // captured, only that the browser landed on the page Creem redirects to.
-    return { kind: "purchase", name: "thanks" };
-  }
   return null;
-}
-
-// Creem's checkout, served on our own domain (buy. is a DNS-only CNAME to
-// Creem). Kept as a redirect target rather than linked to directly so a click
-// can be counted before the browser leaves the site — there is no page load
-// on rollscrub.com after this to count it from.
-const BUY_URL = "https://buy.rollscrub.com/payment/prod_53G0PoiZ59pjRrJKuXN6Rj";
-
-/**
- * Where a Buy click came from: the app's unlock window, the CLI's refusal
- * message, or the website. Read from `?ref=`, which anyone can type, so only
- * the known values are kept; anything else is filed as "site" rather than
- * stored, since a caller-chosen string would otherwise become a row name on
- * the stats page. Must match `License.PurchaseEntry` in the app.
- */
-export function buySource(url) {
-  const ref = url.searchParams.get("ref");
-  return ref === "app" || ref === "cli" ? ref : "site";
 }
 
 /**
@@ -236,7 +199,7 @@ export async function ranged(request, response) {
 
   // The asset handler does not state a length to the Worker, so the size is
   // only known by reading. Read with a ceiling: an unbounded buffer is a way
-  // to take this Worker down, and the licence proxy with it.
+  // to take this Worker down, and the whole site with it.
   if (Number(response.headers.get("content-length") ?? 0) > MAX_RANGED_BYTES) return whole();
   const read = await readWithin(response.body, MAX_RANGED_BYTES);
   if (read.rest) return new Response(read.rest, { status: 200, headers });
@@ -410,15 +373,6 @@ async function stats(request, env) {
   // Filtered here rather than in SQL so the rule is the same function that
   // decides what gets recorded.
   sources.results = sources.results.filter((r) => isOutsideSite(r.name)).slice(0, 15);
-  // Clicks only: a sale still shows up solely as a /thanks view, which carries
-  // no source, so this says where buyers start, not which source sells.
-  // Clicks recorded before sources were tagged carry the name "buy", and
-  // every one of them came from the website, so they are reported as such.
-  const buySources = await env.STATS.prepare(
-    `${CLEAN} SELECT CASE name WHEN 'buy' THEN 'site' ELSE name END AS source, SUM(count) AS n
-     FROM clean WHERE kind = 'buy-click'
-     GROUP BY source ORDER BY n DESC`
-  ).all();
   const versions = await env.STATS.prepare(
     `${CLEAN} SELECT name, SUM(count) AS n FROM clean WHERE kind = 'update-check'
      GROUP BY name ORDER BY n DESC`
@@ -433,8 +387,6 @@ async function stats(request, env) {
     `${CLEAN} SELECT day,
             SUM(CASE WHEN kind = 'pageview' THEN count ELSE 0 END) AS views,
             SUM(CASE WHEN kind = 'download' THEN count ELSE 0 END) AS downloads,
-            SUM(CASE WHEN kind = 'buy-click' THEN count ELSE 0 END) AS buys,
-            SUM(CASE WHEN kind = 'purchase' THEN count ELSE 0 END) AS purchases,
             SUM(CASE WHEN kind = 'update-check' THEN count ELSE 0 END) AS checks,
             SUM(CASE WHEN kind = 'update-fetch' THEN count ELSE 0 END) AS updates
      FROM clean GROUP BY day ORDER BY day DESC LIMIT 30`
@@ -452,25 +404,11 @@ async function stats(request, env) {
   // worth watching.
   const views = total("pageview");
   const downloads = total("download");
-  const buyClicks = total("buy-click");
-  const purchases = total("purchase");
   const botViews = total("pageview-bot");
   const botDownloads = total("download-bot");
-  const botBuyClicks = total("buy-click-bot");
-  const botPurchases = total("purchase-bot");
   // The number the page is actually for: of everyone who read it, how many
   // wanted the app enough to fetch it.
   const rate = views ? `${((downloads / views) * 100).toFixed(1)}%` : "—";
-  // "Bought" here means "clicked Buy" — Creem, not this site, knows whether
-  // the card actually went through, and there's no webhook wired up to ask.
-  // buyRate is the honest number; checkoutRate is only a rough proxy on top
-  // of it, and can read over 100% (see the caveat printed below it).
-  // Measured against site clicks only: a click from the app or the CLI never
-  // loaded the page, so counting it here would inflate a rate whose
-  // denominator is page readers, and could push it past 100% on a quiet day.
-  const siteBuyClicks = buySources.results.find((r) => r.source === "site")?.n ?? 0;
-  const buyRate = views ? `${((siteBuyClicks / views) * 100).toFixed(1)}%` : "—";
-  const checkoutRate = buyClicks ? `${((purchases / buyClicks) * 100).toFixed(0)}%` : "—";
   const noise = views + botViews
     ? `${((botViews / (views + botViews)) * 100).toFixed(0)}%`
     : "—";
@@ -483,31 +421,14 @@ async function stats(request, env) {
   <div><div class="big">${rate}</div><div class="muted">of readers download</div></div>
   <div><div class="big">${total("update-check")}</div><div class="muted">update checks</div></div>
 </div>
-<div class="row">
-  <div><div class="big">${buyClicks}</div><div class="muted">Buy clicks</div></div>
-  <div><div class="big">${buyRate}</div><div class="muted">of readers click Buy on the site</div></div>
-  <div><div class="big">${purchases}</div><div class="muted">reached /thanks</div></div>
-  <div><div class="big">${checkoutRate}</div><div class="muted">of Buy clicks finish checkout</div></div>
-</div>
 <p class="muted">Counts above are requests that looked like a browser. Set aside as
-automated: <strong>${botViews}</strong> page views, <strong>${botDownloads}</strong>
-downloads, <strong>${botBuyClicks}</strong> Buy clicks and <strong>${botPurchases}</strong>
-/thanks landings. ${noise} of all page views. Judged from the user agent alone, which is
+automated: <strong>${botViews}</strong> page views and <strong>${botDownloads}</strong>
+downloads, ${noise} of all page views. Judged from the user agent alone, which is
 forgeable, so read it as a floor on the noise rather than a measurement of it.</p>
-<p class="muted">"Reached /thanks" counts browsers landing on the page Creem
-sends buyers back to — the closest thing to a sale count this site can see
-without a webhook. It is a proxy, not a ledger: it can run <em>higher</em>
-than actual sales, since a buyer reloading the page or returning to it (it
-carries its own download link) counts again each time, and it never runs
-lower for a refund, since nothing here hears about those either.</p>
 
 <h2>Where readers come from</h2>
 <table><tr><th>Source</th><th class="n">Visits</th></tr>
 ${rows(sources, [(r) => `<td>${esc(r.name)}</td>`, (r) => `<td class="n">${r.n}</td>`])}</table>
-
-<h2>Buy clicks by source</h2>
-<table><tr><th>Source</th><th class="n">Clicks</th></tr>
-${rows(buySources, [(r) => `<td>${esc(r.source)}</td>`, (r) => `<td class="n">${r.n}</td>`])}</table>
 
 <h2>Live installs by version</h2>
 <table><tr><th>Version</th><th class="n">Update checks</th></tr>
@@ -531,14 +452,12 @@ ${rows(countries, [(r) => `<td>${esc(r.country)}</td>`, (r) => `<td class="n">${
 
 <h2>Last 30 days</h2>
 <table><tr><th>Day</th><th class="n">Views</th><th class="n">Downloads</th>
-<th class="n">Buy clicks</th><th class="n">/thanks</th><th class="n">Update checks</th>
+<th class="n">Update checks</th>
 <th class="n">Updates</th></tr>
 ${rows(daily, [
   (r) => `<td>${r.day}</td>`,
   (r) => `<td class="n">${r.views}</td>`,
   (r) => `<td class="n">${r.downloads}</td>`,
-  (r) => `<td class="n">${r.buys}</td>`,
-  (r) => `<td class="n">${r.purchases}</td>`,
   (r) => `<td class="n">${r.checks}</td>`,
   (r) => `<td class="n">${r.updates}</td>`,
 ])}</table>
@@ -555,27 +474,9 @@ export default {
 
     if (url.pathname === "/stats") return stats(request, env);
 
-    if (url.pathname === "/buy") {
-      // Only a GET is a click landing here; HEAD comes from link checkers
-      // and unfurlers with otherwise browser-shaped user agents, and
-      // recording it would sit the same tally next to page views and
-      // downloads, which both already exclude it.
-      if (request.method === "GET") {
-        const automated = looksAutomated(request);
-        ctx.waitUntil(
-          record(env, { kind: automated ? "buy-click-bot" : "buy-click", name: buySource(url) }, request)
-        );
-      }
-      return Response.redirect(BUY_URL, 302);
-    }
-
-    // The app's licence calls. Proxied rather than made direct because the
-    // Creem API key cannot ship inside a downloadable binary; see license.js.
-    const licenceAction = url.pathname.startsWith("/license/")
-      && url.pathname.slice("/license/".length);
-    if (["activate", "validate", "deactivate"].includes(licenceAction)) {
-      return license(request, env, licenceAction);
-    }
+    // RollScrub is free now. Copies from before that still link here from
+    // their old unlock window, so the link lands on the download page.
+    if (url.pathname === "/buy") return Response.redirect(`${url.origin}/`, 302);
 
     // Range requests are how a resumed or chunked download arrives, and
     // counting each one would report a single download several times over.

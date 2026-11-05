@@ -98,6 +98,18 @@ ditto "$BINPATH/Sparkle.framework" "$STAGE/Contents/Frameworks/Sparkle.framework
 # never depends on Python being present.
 cp icon/RollScrub.icns "$STAGE/Contents/Resources/RollScrub.icns"
 
+# Licences travel with the binary. The GPL asks for a copy of itself with
+# every copy of the program, and Sparkle's MIT licence asks for its notice in
+# every copy of Sparkle, which the bundle embeds. Missing either one is a
+# failed build, not a quiet omission.
+SPARKLE_LICENSE=".build/checkouts/Sparkle/LICENSE"
+[ -f LICENSE ] || { echo "error: LICENSE is missing" >&2; exit 1; }
+[ -f "$SPARKLE_LICENSE" ] || { echo "error: $SPARKLE_LICENSE is missing" >&2; exit 1; }
+# install -m, not cp: SwiftPM checkouts are read-only, cp keeps that mode,
+# and the xattr clean below then fails on the copy.
+install -m 0644 LICENSE "$STAGE/Contents/Resources/LICENSE.txt"
+install -m 0644 "$SPARKLE_LICENSE" "$STAGE/Contents/Resources/Sparkle-LICENSE.txt"
+
 # The linked binary carries no @executable_path rpath, so @rpath/Sparkle.framework
 # resolves nowhere once bundled. Added here rather than through unsafeFlags in
 # Package.swift, which would bar this package from ever being a dependency.

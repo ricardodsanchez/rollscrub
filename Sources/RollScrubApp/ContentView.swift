@@ -12,15 +12,13 @@ extension Notification.Name {
 
 struct ContentView: View {
     @ObservedObject var session: ReviewSession
-    @ObservedObject var license: LicenseModel
-    @Environment(\.openWindow) private var openWindow
     @StateObject private var scanner = ScanCoordinator()
     @State private var showApplyConfirmation = false
-    /// Whether the alert on screen said files go to the Trash. Fixed when it
-    /// opens: the alert is the consent, and confirming one that said nothing
-    /// is removed must not remove anything, even if a licence was activated
-    /// while it sat open.
-    @State private var alertOffersRemoval = false
+    /// The files the alert on screen offered to send to the Trash. Fixed when
+    /// it opens: the alert is the consent, so confirming it removes these and
+    /// nothing else, even if more files were marked while it sat open.
+    @State private var offeredForRemoval: Set<ReviewItem.ID> = []
+    private var alertOffersRemoval: Bool { !offeredForRemoval.isEmpty }
     /// Hidden until there is a review to show. Before a scan the sidebar holds
     /// an empty list under a filter reading "(0)", and it pushes the welcome
     /// screen off the window's centre for no gain.
@@ -33,12 +31,6 @@ struct ContentView: View {
         session.isLoaded && !session.items.isEmpty
     }
 
-    /// Only removal is gated. Marking pairs "keep" is a decision to leave files
-    /// exactly where they are, and charging for that would be indefensible.
-    private var needsLicenceToApply: Bool {
-        !license.isPro && !session.markedForDiscard.isEmpty
-    }
-
     /// "1 files" in a button someone is about to press on their photographs
     /// undermines the care the rest of the app is arguing for.
     private static func count(_ n: Int, _ singular: String, _ plural: String) -> String {
@@ -47,14 +39,6 @@ struct ContentView: View {
 
     private var applyButtonTitle: String {
         let files = Self.count(session.markedForDiscard.count, "file", "files")
-        if needsLicenceToApply {
-            // Keep decisions in the same batch are not held back by the
-            // licence, so the button offers them first; the unlock window
-            // follows for the rest.
-            return session.markedForKeep.isEmpty
-                ? "Unlock to Remove \(files)…"
-                : "Apply \(Self.count(session.markedForKeep.count, "decision", "decisions"))…"
-        }
         return session.markedForDiscard.isEmpty
             ? "Apply \(Self.count(session.markedForKeep.count, "decision", "decisions"))"
             : "Remove \(files)…"
@@ -91,19 +75,10 @@ struct ContentView: View {
             Button("Cancel", role: .cancel) {}
             Button(alertOffersRemoval ? "Move to Trash" : "Apply",
                    role: alertOffersRemoval ? .destructive : nil) {
-                // Checked again at the last moment, for the same reason as the
-                // Remove button: the alert can sit open across the moment a
-                // licence lapses. If it has, nothing is removed, and the keep
-                // decisions still go through. The reverse never happens:
-                // removal needs both the alert to have offered it and the
-                // licence to still unlock it.
-                license.refreshFromStore()
-                let plan = session.applyPlan(removalUnlocked: license.isPro)
-                let removing = alertOffersRemoval && plan.removes
-                Task {
-                    await session.apply(removing: removing)
-                    if plan.opensUnlock { openUnlockWindow() }
-                }
+                // Removes only what the alert offered to remove when it
+                // opened. Keep decisions always go through.
+                let removing = offeredForRemoval
+                Task { await session.apply(removing: removing) }
             }
         } message: {
             Text(applyMessage)
@@ -478,21 +453,10 @@ struct ContentView: View {
                 ProgressView().controlSize(.small)
             }
             Button {
-                // Keeping files needs no licence — only removal is paid, and
-                // a decision to leave something alone must never be blocked.
-                // Read the licence fresh rather than trusting the value cached
-                // at launch: a window left open for weeks can outlive the
-                // offline grace window, and that must lock removal now, not
-                // at the next relaunch. (A refund is noticed by the daily
-                // re-check, not here; this reads only the keychain and clock.)
-                license.refreshFromStore()
-                let plan = session.applyPlan(removalUnlocked: license.isPro)
-                if plan.confirms {
-                    alertOffersRemoval = plan.removes
-                    showApplyConfirmation = true
-                } else if plan.opensUnlock {
-                    openUnlockWindow()
-                }
+                // Always asks first. The alert is fixed to what is marked now,
+                // and confirming it does only what it said.
+                offeredForRemoval = Set(session.markedForDiscard.map(\.id))
+                showApplyConfirmation = true
             } label: {
                 Text(applyButtonTitle)
             }
@@ -509,12 +473,15 @@ struct ContentView: View {
 
     private var applyMessage: String {
         var parts: [String] = []
-        // Follows what the alert's title and button were fixed to say when it
-        // opened, so the three never disagree.
-        if alertOffersRemoval && !session.markedForDiscard.isEmpty {
+        // Describes the files the alert offered when it opened, so the title,
+        // the button and this text never disagree with what Apply will do.
+        let offered = session.markedForDiscard.filter { offeredForRemoval.contains($0.id) }
+        let notOffered = session.markedForDiscard.count - offered.count
+        if !offered.isEmpty {
+            let bytes = offered.reduce(Int64(0)) { $0 + $1.sizeBytes }
             parts.append(
-                "\(session.markedForDiscard.count) duplicate(s) — "
-                + "\(ReportWriter.humanSize(session.reclaimableBytes)) — go to the Trash, "
+                "\(offered.count) duplicate(s) — "
+                + "\(ReportWriter.humanSize(bytes)) — go to the Trash, "
                 + "and stay recoverable from there until you empty it. "
                 + "Each one is re-checked byte for byte against the copy being kept "
                 + "immediately before it goes.")
@@ -526,21 +493,13 @@ struct ContentView: View {
                 + "\(restores == 1 ? "goes" : "go") back to "
                 + "\(restores == 1 ? "its" : "their") original folder\(restores == 1 ? "" : "s").")
         }
-        if !alertOffersRemoval && !session.markedForDiscard.isEmpty {
-            let n = session.markedForDiscard.count
+        if notOffered > 0 {
             parts.append(
-                "\(Self.count(n, "duplicate", "duplicates")) marked for removal "
-                + "\(n == 1 ? "stays where it is" : "stay where they are"). "
-                + "Removing needs a licence, and the unlock window opens next.")
+                "\(Self.count(notOffered, "duplicate", "duplicates")) marked for removal "
+                + "\(notOffered == 1 ? "stays where it is" : "stay where they are"). "
+                + "Apply again to remove \(notOffered == 1 ? "it" : "them").")
         }
         return parts.joined(separator: "\n\n")
-    }
-
-    private func openUnlockWindow() {
-        license.unlockContext = UnlockContext(
-            files: session.markedForDiscard.count,
-            bytes: session.reclaimableBytes)
-        openWindow(id: "license")
     }
 
     private func chooseFolderToScan() {

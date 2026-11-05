@@ -42,45 +42,18 @@ APP="$DIST/RollScrub.app"
 INSTALLED="$(defaults read "$APP/Contents/Info.plist" CFBundleVersion)"
 [ "$INSTALLED" = "$BUILD" ] || die "built bundle reports build $INSTALLED, expected $BUILD"
 
-# The developer unlock (License.isDeveloperUnlocked) is debug-only, and
-# `swift build -c release` does not define DEBUG — so this should be
-# impossible. It is checked anyway because it is the one defect in this repo
-# that no test can catch and no amount of using the app would reveal: a
-# release carrying it gives the paid feature away to everyone, silently, and
-# looks exactly like a correct build. Proving the string is absent from the
-# binary costs a second.
-#
-# `grep -c` rather than `grep -q`: under `pipefail`, a quiet grep exits on the
-# first match, `strings` then dies of SIGPIPE, and the pipeline reports that
-# failure instead of the match — which would read as "clean" precisely when
-# the unlock is present. Counting reads all the input, so nothing is killed.
-#
-# Read into a variable and matched with `case`, the same way notarize.sh tests
-# codesign's output and for the same reason. The read is checked because an
-# unreadable or empty binary matches no pattern and would otherwise report a
-# clean build having examined nothing — a guard that cannot fail is worse than
-# no guard, because it is trusted.
-#
-# Every executable in the bundle, not one named binary: the CLI links
-# RollScrubCore too, so it carries the same gate, and it is the CLI that
-# offers --move. A check hardcoded to the app would have reported a clean
-# release while handing the paid feature away on the command line.
-echo "==> checking the developer unlock is not in the build"
-UNLOCK_CHECKED=0
-for UNLOCK_BIN in "$APP/Contents/MacOS/"*; do
-  [ -f "$UNLOCK_BIN" ] || continue
-  SYMBOLS="$(/usr/bin/strings -a "$UNLOCK_BIN")" || die "could not read strings from $UNLOCK_BIN"
-  [ -n "$SYMBOLS" ] || die "no strings in $UNLOCK_BIN — the unlock check proved nothing"
-  case "$SYMBOLS" in
-    *ROLLSCRUB_DEVELOPER_UNLOCK*)
-      die "the developer unlock is compiled into $UNLOCK_BIN; it must never ship" ;;
-  esac
-  UNLOCK_CHECKED=$((UNLOCK_CHECKED + 1))
+# Both the app and the CLI must be in the bundle. On case-insensitive APFS a
+# CLI named `rollscrub` lands on the app's own `RollScrub` executable and
+# overwrites it, leaving one file where there should be two, and every
+# codesign check still passes. make-app.sh checks for the collision itself;
+# this is the second check, on the bundle that is about to ship.
+echo "==> checking the app and the CLI are both in the bundle"
+BINARIES=0
+for BIN in "$APP/Contents/MacOS/"*; do
+  [ -f "$BIN" ] && BINARIES=$((BINARIES + 1))
 done
-# A glob that matched nothing leaves the loop body unrun, and silence would
-# read as success — the failure this whole check exists to rule out.
-[ "$UNLOCK_CHECKED" -ge 2 ] \
-  || die "expected the app and the CLI in Contents/MacOS, checked $UNLOCK_CHECKED"
+[ "$BINARIES" -ge 2 ] \
+  || die "expected the app and the CLI in Contents/MacOS, found $BINARIES"
 
 echo "==> notarizing"
 ./notarize.sh "$APP"
@@ -100,8 +73,7 @@ echo "==> regenerating appcast"
 
 # The download buttons name the file, and nothing else in this script touches
 # them. A release that leaves them alone puts the *previous* build on the
-# homepage — which is how somebody downloads a copy that cannot talk to the
-# current licence server, pays, and is told their key does not exist. Only
+# homepage, and every new reader starts on a build with fixes missing. Only
 # site/*.html: appcast.xml legitimately lists every past version, and
 # rewriting it would break the update path for everyone not on the newest.
 # Anchored to href=, and recursive, so that it matches exactly what the check
@@ -121,7 +93,7 @@ while IFS= read -r page; do
 done < <(find "$SITE" -name '*.html' -type f)
 
 # Checked, not assumed. A link left pointing at an older build looks identical
-# on the page and surfaces only as a customer who cannot activate. The
+# on the page and surfaces only as someone running an old build. The
 # `|| true` matters: grep exits non-zero when it finds nothing, which under
 # `set -e` would kill the script precisely when everything is correct.
 STALE="$(grep -rhoE "href=[\"']/releases/RollScrub-[0-9]+(\.[0-9]+)*\.zip[\"']" "$SITE" --include='*.html' \

@@ -12,6 +12,10 @@ rollscrub_report.csv
 private_keys/
 *.p8
 
+# Claude Code's per-machine permissions. They name real paths and filenames
+# from the developer's own photo library.
+.claude/settings.local.json
+
 # Wrangler local state and logs
 .wrangler/
 

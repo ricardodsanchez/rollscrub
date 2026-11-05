@@ -418,13 +418,13 @@
     color: var(--text-dim);
   }
 
-  /* pricing */
+  /* download cards */
   .price-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 1px; background: var(--frame); border: 1px solid var(--frame); }
   .price { background: var(--surface); padding: 30px 26px; display: flex; flex-direction: column; gap: 14px; }
-  /* The paid card is the app's own combination: amber on charcoal, exactly
+  /* The lead card is the app's own combination: amber on charcoal, exactly
      as the icon paints it. A 10% wash of the accent over the page instead
      landed on muddy beige in light and brown in dark, and read as a tinted
-     template panel rather than as the thing being sold. */
+     template panel rather than as the thing on offer. */
   .price.lead {
     background: var(--lead-bg);
     color: var(--lead-text);
@@ -513,8 +513,8 @@
     <div class="nav-links">
       <a href="#how" class="hide-sm">How it works</a>
       <a href="#safety" class="hide-sm">Safety</a>
-      <a href="#pricing">Pricing</a>
-      <a class="btn small" href="#pricing">Download</a>
+      <a href="https://github.com/ricardodsanchez/rollscrub" class="hide-sm">Source</a>
+      <a class="btn small" href="#download">Download</a>
     </div>
   </nav>
 
@@ -528,10 +528,10 @@
         You see each pair side by side. Nothing moves until you say so.
       </p>
       <div class="hero-cta">
-        <a class="btn" href="#pricing">Download for macOS</a>
+        <a class="btn" href="#download">Download for macOS</a>
         <a class="btn ghost" href="#how">See how it works</a>
       </div>
-      <p class="hero-meta">macOS 14 or later · Apple silicon &amp; Intel · Free to scan</p>
+      <p class="hero-meta">macOS 14 or later · Apple silicon &amp; Intel · Free and open source</p>
     </div>
 
   </header>
@@ -717,40 +717,37 @@
   </div>
 </section>
 
-<section id="pricing">
+<section id="download">
   <div class="wrap">
     <div class="section-head">
-      <div class="eyebrow">Pricing</div>
-      <h2>Scan for free. Pay once to act on it.</h2>
-      <p>Scanning and reviewing cost nothing and always will — you can see exactly what RollScrub found before deciding whether it's worth anything to you.</p>
+      <div class="eyebrow">Download</div>
+      <h2>Free. All of it.</h2>
+      <p>No licence, no account and nothing held back. RollScrub is open source under the GPL, so you can read exactly what it does to your files before you let it near them.</p>
     </div>
 
     <div class="price-grid">
-      <div class="price">
-        <h3>Free</h3>
-        <div class="amount">$0</div>
+      <div class="price lead">
+        <h3>RollScrub for macOS</h3>
+        <div class="amount">Free</div>
         <ul>
           <li>Scan unlimited folders and drives</li>
           <li>Byte-for-byte verification</li>
           <li>Side-by-side review of every pair</li>
-          <li>Full paths, sizes and capture dates for both files</li>
+          <li>Move duplicates to the Trash in bulk</li>
+          <li>Signed, notarized and kept up to date</li>
         </ul>
-        <a class="btn ghost" href="/releases/RollScrub-1.4.zip">Download</a>
+        <a class="btn" href="/releases/RollScrub-1.4.zip">Download</a>
       </div>
 
-      <div class="price lead">
-        <h3>RollScrub Pro</h3>
-        <div class="amount">$19<span>one time</span></div>
+      <div class="price">
+        <h3>The source</h3>
+        <div class="amount">GPL-3.0</div>
         <ul>
-          <li>Everything in Free</li>
-          <li>Move duplicates to the Trash in bulk</li>
-          <li>Use it on up to 3 Macs</li>
-          <li>Free updates to every 1.x release</li>
+          <li>The app, the command line tool and the tests</li>
+          <li>Build it yourself with Swift</li>
+          <li>Bug reports and fixes welcome</li>
         </ul>
-        <p class="early" style="opacity:.7">Prices are in US dollars. Sales tax or VAT is added at
-          checkout where your country requires it.</p>
-        <a class="btn" href="/buy">Buy RollScrub Pro</a>
-        <p class="guarantee">Your key arrives by email and works on three Macs. Full refund within 30 days, no questions asked — and scanning is free, so you can see what RollScrub found before spending anything.</p>
+        <a class="btn ghost" href="https://github.com/ricardodsanchez/rollscrub">View on GitHub</a>
       </div>
     </div>
 
@@ -785,23 +782,13 @@
         <p>Most of the work is thrown away cheaply: only files sharing an exact byte size are ever opened, which on a real drive eliminates the overwhelming majority before anything is read. Full byte-for-byte comparison then runs in parallel across cores, and only on the handful of genuine candidates.</p>
       </details>
       <details>
-        <summary>What does a licence cover?</summary>
-        <p>One purchase, used on up to three Macs at a time — and you can move an activation between machines whenever you like by deactivating one. It unlocks moving duplicates to the Trash.</p>
-        <p>Every 1.x update is included. If there is ever a paid 2.0, your copy keeps working exactly as it does now — nothing expires and nothing stops functioning.</p>
-        <p>Scanning and reviewing pairs are free forever and always will be. You can see everything RollScrub found before deciding whether it is worth paying for.</p>
+        <summary>Is it really free?</summary>
+        <p>Yes. Every feature, on as many Macs as you like, with no account and nothing to activate. RollScrub used to charge for moving duplicates to the Trash. It doesn't anymore.</p>
       </details>
       <details>
-        <summary>How do I activate my licence key?</summary>
-        <p>Your key arrives in the email from your purchase, and is also on your order page. In RollScrub, choose <strong>RollScrub → Unlock Removal</strong> from the menu bar, paste the key, and that's it.</p>
-      </details>
-      <details>
-        <summary>What happens when I get a new Mac?</summary>
-        <p>Open <strong>RollScrub → Licence</strong> on the machine you're retiring and deactivate it. That frees the slot immediately and you can activate the new Mac straight away.</p>
-        <p>If the old Mac is already gone — sold, broken, wiped — email <a href="mailto:support@rollscrub.com">support@rollscrub.com</a> and the slot will be released for you. Nobody is going to lose a licence because a hard drive died.</p>
-      </details>
-      <details>
-        <summary>What if I buy it and don't like it?</summary>
-        <p>Email within 30 days and you'll get a full refund, no questions asked and no explanation needed. That said, scanning and reviewing are free — so you can see exactly what RollScrub found on your own drives before spending anything.</p>
+        <summary>Can I read the code?</summary>
+        <p>All of it, <a href="https://github.com/ricardodsanchez/rollscrub">on GitHub</a>. It is licensed under the GPL-3.0, so you can build it, change it and share it, as long as what you share stays open too.</p>
+        <p>Found a bug, especially one that could cost somebody a file? Please report it there, or email <a href="mailto:support@rollscrub.com">support@rollscrub.com</a>.</p>
       </details>
       <details>
         <summary>Is it on the Mac App Store?</summary>
@@ -817,7 +804,7 @@
     <div class="foot-links">
       <a href="#how">How it works</a>
       <a href="#safety">Safety</a>
-      <a href="#pricing">Pricing</a>
+      <a href="https://github.com/ricardodsanchez/rollscrub">Source</a>
       <a href="/changelog">Changelog</a>
       <a href="/privacy">Privacy</a>
       <a href="/terms">Terms</a>

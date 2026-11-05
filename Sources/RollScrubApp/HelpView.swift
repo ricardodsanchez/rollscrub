@@ -104,11 +104,7 @@ struct HelpView: View {
                              + "into `/usr/local/bin` and will ask for your password. Then "
                              + "open a new terminal window:")
                     CodeBlock("rollscrub ~/Pictures \"/Volumes/Extreme Pro\"")
-                    HelpText("It uses the licence you activated here — there is nothing "
-                             + "separate to buy. Because it is a separate binary from the "
-                             + "app, macOS asks permission the first time it reads that "
-                             + "licence: choose **Always Allow** and it will not ask again. "
-                             + "Run `rollscrub --help` for the full list of options.")
+                    HelpText("Run `rollscrub --help` for the full list of options.")
                 }
             }
             .padding(32)

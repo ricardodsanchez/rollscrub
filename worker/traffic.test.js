@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
-import worker, { buySource, dayOf, isOutsideSite, looksAutomated } from "./index.js";
+import worker, { dayOf, isOutsideSite, looksAutomated } from "./index.js";
 
 /**
  * Whether a request is counted as a person.
@@ -66,20 +66,6 @@ test("a request with no user agent is not a person", () => {
 /// download would make the download number grow on its own.
 test("Sparkle updating itself is not a new download", () => {
   assert.equal(looksAutomated(ua("RollScrub/1.0 Sparkle/2.6.0")), true);
-});
-
-/// Buy clicks are split by where they came from, so the stats page shows how
-/// many people start checkout from the app rather than the site. The ref is
-/// typed by whoever sends the request, so only known values may become a
-/// row name; anything else counts as a click on the website.
-test("a Buy click is filed under where it came from, and nothing else", () => {
-  const src = (q) => buySource(new URL(`https://rollscrub.com/buy${q}`));
-  assert.equal(src("?ref=app"), "app");
-  assert.equal(src("?ref=cli"), "cli");
-  assert.equal(src(""), "site");
-  assert.equal(src("?ref="), "site");
-  assert.equal(src("?ref=APP"), "site");
-  assert.equal(src("?ref=<script>"), "site");
 });
 
 /**
@@ -209,15 +195,15 @@ test("our own pages and bare addresses are not somewhere readers came from", asy
   assert.equal(isOutsideSite(""), false);
 });
 
-/// A quarter of all Buy clicks came through Tor and none reached checkout.
-/// Counted as people, they drag the checkout rate down and make the Buy
-/// button look worse than it is, which is the number most likely to send
-/// somebody rewriting a page that works.
-test("a Buy click through Tor is set aside with the crawlers", async () => {
+/// Copies from before RollScrub went free still link to /buy from their old
+/// unlock window. The checkout behind it is archived, so following the link
+/// must land on the download page, not on a dead checkout or a 404.
+test("an old copy's Buy link lands on the download page", async () => {
   const s = site();
-  await s.hit("/buy", { country: "T1" });
-  await s.hit("/buy?ref=app", { country: "US" });
-  assert.deepEqual(s.counts(), { "buy-click-bot site": 1, "buy-click app": 1 });
+  const res = await s.hit("/buy?ref=app");
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.get("location"), "https://rollscrub.com/");
+  assert.deepEqual(s.counts(), {});
 });
 
 /// The page has a month of rows written under the old rules. If it summed
@@ -229,8 +215,6 @@ test("the stats page reads rows from before the fixes under the same rules", asy
   s.past("2026-10-01", "pageview", "/", "T1", 7);
   s.past("2026-10-01", "download", "RollScrub-1.3.zip", "US", 10);
   s.past("2026-10-01", "download", "rollscrub-1.3.zip", "US", 4);
-  s.past("2026-10-01", "buy-click", "buy", "US", 5);
-  s.past("2026-10-01", "buy-click", "buy", "T1", 18);
   s.past("2026-10-01", "update-check", "1.3", "US", 3);
   s.past("2026-10-01", "update-check", "unknown", "US", 26);
   s.past("2026-10-01", "referrer", "rollscrub.com", "US", 14);
@@ -240,16 +224,14 @@ test("the stats page reads rows from before the fixes under the same rules", asy
   const lines = await s.page();
   assert.equal(figure(lines, "page views"), "100");
   assert.equal(figure(lines, "downloads"), "10");
-  assert.equal(figure(lines, "Buy clicks"), "5");
   assert.equal(figure(lines, "update checks"), "3");
-  assert.equal(figure(lines, "of readers click Buy on the site"), "5.0%");
   for (const gone of ["unknown", "rollscrub-1.3.zip", "rollscrub.com", "172.67.142.196"]) {
     assert.equal(lines.includes(gone), false, `${gone} is still on the page`);
   }
   assert.equal(lines.includes("www.google.com"), true);
-  // The daily row: views, downloads, Buy clicks, /thanks, update checks.
+  // The daily row: views, downloads, update checks, update fetches.
   const day = lines.indexOf("2026-10-01");
-  assert.deepEqual(lines.slice(day + 1, day + 6), ["100", "10", "5", "0", "3"]);
+  assert.deepEqual(lines.slice(day + 1, day + 5), ["100", "10", "3", "0"]);
 });
 
 /// The rule that hides old misspelt downloads names the release file. It is
