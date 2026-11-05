@@ -195,6 +195,75 @@ final class ReviewSessionTests: XCTestCase {
         }
     }
 
+    /// Verifying a batch of large videos takes minutes. Checking every file
+    /// first and trashing them all at the end means a file that changed in
+    /// those minutes goes to the Trash on the strength of a stale check, and
+    /// the copy kept is no longer the same photo.
+    func testEachFileIsVerifiedImmediatelyBeforeItIsTrashed() async throws {
+        let result = try scanFixture(count: 2)
+        let session = ReviewSession()
+        session.load(scanResult: result, root: root)
+        session.markAllPending(as: .discard)
+        let first = session.items[0], second = session.items[1]
+
+        let trash = root.appendingPathComponent("Trash")
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        var edited = false
+        ReviewSession.trashOverride = { urls in
+            // The second file changes while the first is being dealt with.
+            if !edited {
+                edited = true
+                try? Data("edited after the scan".utf8).write(to: second.candidateURL)
+            }
+            for url in urls {
+                try? FileManager.default.moveItem(
+                    at: url, to: trash.appendingPathComponent(UUID().uuidString))
+            }
+            return [:]
+        }
+        defer { ReviewSession.trashOverride = nil }
+
+        await session.apply(removing: Set(session.markedForDiscard.map(\.id)))
+
+        XCTAssertEqual(session.item(id: first.id)?.state, .trashed)
+        XCTAssertTrue(exists(second.candidateURL),
+                      "a file that changed after its check must not be trashed on that check")
+        guard case .failed = session.item(id: second.id)?.state else {
+            return XCTFail("expected the changed file to fail verification")
+        }
+    }
+
+    /// Apply works through the batch one file at a time, and the context
+    /// menu and Mark All stay usable while it does. Somebody who spots a
+    /// photo they want to keep and switches it mid-run must not find it in
+    /// the Trash anyway.
+    func testAFileSwitchedToKeepDuringApplyIsNotTrashed() async throws {
+        let result = try scanFixture(count: 2)
+        let session = ReviewSession()
+        session.load(scanResult: result, root: root)
+        session.markAllPending(as: .discard)
+        let first = session.items[0], second = session.items[1]
+
+        let trash = root.appendingPathComponent("Trash")
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        ReviewSession.trashOverride = { urls in
+            // While the first file is being trashed, the second is switched.
+            session.mark(second.id, as: .keep)
+            for url in urls {
+                try? FileManager.default.moveItem(
+                    at: url, to: trash.appendingPathComponent(UUID().uuidString))
+            }
+            return [:]
+        }
+        defer { ReviewSession.trashOverride = nil }
+
+        await session.apply(removing: Set(session.markedForDiscard.map(\.id)))
+
+        XCTAssertEqual(session.item(id: first.id)?.state, .trashed)
+        XCTAssertTrue(exists(second.candidateURL), "a file switched to Keep was trashed")
+        XCTAssertEqual(session.item(id: second.id)?.state, .kept)
+    }
+
     func testKeepDecisionLeavesAScannedFileWhereItIs() async throws {
         let result = try scanFixture(count: 1)
         let session = ReviewSession()

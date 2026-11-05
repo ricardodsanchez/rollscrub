@@ -365,6 +365,9 @@ final class ReviewSession: ObservableObject {
     ///
     /// Before each file goes, its counterpart is re-checked byte for byte:
     /// nothing is removed unless an identical copy is verifiably still there.
+    /// Each file is trashed straight after its own check, not with the rest of
+    /// the batch at the end: verifying a few hundred videos takes minutes, and
+    /// a check that old says nothing about the file being thrown away.
     ///
     /// `removing` names the files the person agreed to send to the Trash: the
     /// ones the confirmation alert offered when it opened. Only a file that is
@@ -379,9 +382,13 @@ final class ReviewSession: ObservableObject {
         isApplying = true
         defer { isApplying = false }
 
-        var trashable: [ReviewItem] = []
         for item in markedForDiscard where removing.contains(item.id) {
-            guard let index = items.firstIndex(where: { $0.id == item.id }) else { continue }
+            // Marks can still change while Apply runs, from the context menu
+            // or Mark All. The list being walked is a snapshot from the start,
+            // so a file switched to Keep since then is left alone.
+            guard let index = items.firstIndex(where: { $0.id == item.id }),
+                  items[index].decision == .discard
+            else { continue }
             guard FileManager.default.fileExists(atPath: item.keepURL.path) else {
                 items[index].state = .failed("the copy it duplicates is missing")
                 continue
@@ -395,22 +402,21 @@ final class ReviewSession: ObservableObject {
             let identical = await Task.detached(priority: .userInitiated) {
                 ContentSignature.verifyIdentical(item.keepURL.path, item.candidateURL.path)
             }.value
+            // Asked again after the comparison, which can take minutes for a
+            // video: the list and the mark may both have changed meanwhile.
+            guard let index = items.firstIndex(where: { $0.id == item.id }),
+                  items[index].decision == .discard
+            else { continue }
             guard identical else {
                 items[index].state = .failed("no longer byte-identical to the copy being kept")
                 continue
             }
-            trashable.append(item)
-        }
-
-        if !trashable.isEmpty {
-            let failures = await Self.moveToTrash(trashable.map(\.candidateURL))
-            for item in trashable {
-                guard let index = items.firstIndex(where: { $0.id == item.id }) else { continue }
-                if let reason = failures[item.candidateURL] {
-                    items[index].state = .failed(reason)
-                } else {
-                    items[index].state = .trashed
-                }
+            let failures = await (Self.trashOverride ?? Self.moveToTrash)([item.candidateURL])
+            guard let index = items.firstIndex(where: { $0.id == item.id }) else { continue }
+            if let reason = failures[item.candidateURL] {
+                items[index].state = .failed(reason)
+            } else {
+                items[index].state = .trashed
             }
         }
 
@@ -441,18 +447,17 @@ final class ReviewSession: ObservableObject {
     /// deleting it removes it from every device — neither should happen
     /// silently as a side effect of a duplicate sweep.
     private static func icloudPlaceholderReason(for item: ReviewItem) -> String? {
-        for url in [item.candidateURL, item.keepURL] {
-            guard let values = try? url.resourceValues(
-                forKeys: [.ubiquitousItemDownloadingStatusKey, .isUbiquitousItemKey]),
-                values.isUbiquitousItem == true
-            else { continue }
-            if values.ubiquitousItemDownloadingStatus != .current {
-                return "iCloud has not downloaded this file yet — open it once in "
-                    + "Finder, then use Retry failed"
-            }
+        for url in [item.candidateURL, item.keepURL]
+        where ICloudPlaceholder.isNotDownloaded(url.path) {
+            return "iCloud has not downloaded this file yet. Open it once in "
+                + "Finder, then use Retry failed"
         }
         return nil
     }
+
+    /// Stands in for the Trash in tests, so a test run neither fills the
+    /// real one nor depends on Finder answering.
+    static var trashOverride: (([URL]) async -> [URL: String])?
 
     private static func moveToTrash(_ urls: [URL]) async -> [URL: String] {
         await withCheckedContinuation { continuation in

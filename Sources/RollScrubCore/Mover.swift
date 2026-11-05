@@ -50,15 +50,37 @@ public enum MoveProgress {
 /// several roots (possibly on different drives) are scanned together.
 public final class Mover {
 
+    /// Answers which volume a path is on, or nil when it cannot tell.
+    typealias VolumeLookup = (URL) -> AnyHashable?
+
     private let roots: [URL]
     private let reviewDirectoryName: String
     private let progress: ((MoveProgress) -> Void)?
+    private let volumeOf: VolumeLookup
+    private let isNotDownloaded: (String) -> Bool
     private let fileManager = FileManager.default
 
-    public init(
+    public convenience init(
         roots: [URL],
         reviewDirectoryName: String = SkipRules.reviewDirectoryName,
         progress: ((MoveProgress) -> Void)? = nil
+    ) {
+        self.init(
+            roots: roots,
+            reviewDirectoryName: reviewDirectoryName,
+            progress: progress,
+            volumeOf: Mover.volumeIdentifier(of:),
+            isNotDownloaded: ICloudPlaceholder.isNotDownloaded)
+    }
+
+    /// The lookups are injectable because a test cannot mount a second volume
+    /// or evict a file from iCloud.
+    init(
+        roots: [URL],
+        reviewDirectoryName: String = SkipRules.reviewDirectoryName,
+        progress: ((MoveProgress) -> Void)? = nil,
+        volumeOf: @escaping VolumeLookup,
+        isNotDownloaded: @escaping (String) -> Bool
     ) {
         // Symlinks are resolved, not merely standardized. Enumeration reports
         // files at their resolved paths, so a root given as /tmp or /var —
@@ -72,6 +94,8 @@ public final class Mover {
             .sorted { $0.path.count > $1.path.count }
         self.reviewDirectoryName = reviewDirectoryName
         self.progress = progress
+        self.volumeOf = volumeOf
+        self.isNotDownloaded = isNotDownloaded
     }
 
     public convenience init(
@@ -84,10 +108,11 @@ public final class Mover {
 
     /// Sets aside every REMOVE file in `groups`.
     ///
-    /// A file is moved only when all three hold: its KEEP counterpart is still
-    /// on disk, the two still compare equal across every byte, and the
-    /// destination is unoccupied. Anything else is skipped and reported —
-    /// a failure never costs you a file.
+    /// A file is moved only when all of these hold: its KEEP counterpart is
+    /// still on disk, neither file is an iCloud placeholder, the review folder
+    /// is on the file's own volume, the two still compare equal across every
+    /// byte, and the destination is unoccupied. Anything else is skipped and
+    /// reported. A failure never costs you a file.
     public func move(groups: [DuplicateGroup]) throws -> MoveOutcome {
         var moved: [MoveRecord] = []
         var movedByRoot: [URL: [MoveRecord]] = [:]
@@ -113,13 +138,6 @@ public final class Mover {
                 skipped.append(SkippedMove(path: candidate.path, reason: "no longer on disk"))
                 continue
             }
-            // Re-confirm at the moment of the move, not just at scan time.
-            guard ContentSignature.verifyIdentical(candidate.keep, candidate.path) else {
-                skipped.append(SkippedMove(
-                    path: candidate.path,
-                    reason: "no longer byte-identical to \(candidate.keep)"))
-                continue
-            }
             guard let (owningRoot, relative) = rootAndRelativePath(of: candidate.path) else {
                 skipped.append(SkippedMove(
                     path: candidate.path, reason: "is outside every scan root"))
@@ -128,6 +146,53 @@ public final class Mover {
 
             let reviewDirectory = owningRoot.appendingPathComponent(reviewDirectoryName)
             let destination = availableDestination(in: reviewDirectory, for: relative)
+
+            // A move onto another volume is a copy followed by a delete of the
+            // original, which is exactly what this program promises never to
+            // do. It happens when a scan root has a mount point under it
+            // (`rollscrub /Volumes --move`, a mounted disk image), so the file
+            // is on one drive and its root's review folder on another.
+            // Compared folder to folder: a mount point is always a directory,
+            // so a file is on the volume of the folder holding it, and the
+            // move lands on the volume of the deepest existing folder on the
+            // way to its destination. Symlinks are resolved first: a review
+            // folder that links to another drive puts the file on that drive,
+            // whatever volume the link itself sits on. Refused when either
+            // volume cannot be told.
+            let fileVolume = volumeOf(URL(fileURLWithPath: candidate.path)
+                .deletingLastPathComponent().resolvingSymlinksInPath())
+            let landingVolume = volumeOf(nearestExistingAncestor(
+                of: destination.deletingLastPathComponent()).resolvingSymlinksInPath())
+            guard let fileVolume, let landingVolume, fileVolume == landingVolume else {
+                skipped.append(SkippedMove(
+                    path: candidate.path,
+                    reason: fileVolume == nil || landingVolume == nil
+                        ? "could not confirm it is on the same drive as \(reviewDirectory.path)"
+                        : "is on a different drive from \(reviewDirectory.path); "
+                            + "scan that drive as a root of its own to move it"))
+                continue
+            }
+
+            // Reading an evicted iCloud file downloads the whole thing, and
+            // the comparison below reads every byte of both. A file can be
+            // evicted between the scan and the move, so this is asked again
+            // here, of the two files about to be read and nothing else.
+            if let evicted = [candidate.path, candidate.keep].first(where: isNotDownloaded) {
+                skipped.append(SkippedMove(
+                    path: candidate.path,
+                    reason: "iCloud has not downloaded \(evicted); "
+                        + "open it once in Finder, then run --move again"))
+                continue
+            }
+
+            // Re-confirm at the moment of the move, not just at scan time.
+            guard ContentSignature.verifyIdentical(candidate.keep, candidate.path) else {
+                skipped.append(SkippedMove(
+                    path: candidate.path,
+                    reason: "no longer byte-identical to \(candidate.keep)"))
+                continue
+            }
+
             do {
                 try fileManager.createDirectory(
                     at: destination.deletingLastPathComponent(),
@@ -210,6 +275,27 @@ public final class Mover {
     }
 
     // MARK: - Paths
+
+    /// The volume a directory is on. Read through a fresh URL so a cached
+    /// value cannot answer for a mount that has changed since.
+    static func volumeIdentifier(of url: URL) -> AnyHashable? {
+        let fresh = URL(fileURLWithPath: url.path)
+        guard let identifier = try? fresh.resourceValues(forKeys: [.volumeIdentifierKey])
+            .volumeIdentifier as? NSObject
+        else { return nil }
+        return AnyHashable(identifier)
+    }
+
+    /// The deepest directory on the way to `url` that already exists. Folders
+    /// created under it to mirror the original layout land on its volume, so
+    /// this is the directory whose volume a move into `url` ends up on.
+    private func nearestExistingAncestor(of url: URL) -> URL {
+        var current = url
+        while !fileManager.fileExists(atPath: current.path), current.path != "/" {
+            current = current.deletingLastPathComponent()
+        }
+        return current
+    }
 
     /// The root a path was found under, and its path relative to that root.
     /// `roots` is sorted longest-first so a nested root wins over its parent.

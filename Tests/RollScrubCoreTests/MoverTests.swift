@@ -145,6 +145,132 @@ final class MoverTests: XCTestCase {
         XCTAssertTrue(exists(dupeB))
     }
 
+    // MARK: - Drives
+
+    /// A Mover that believes everything under `otherDrive` is a second
+    /// volume. Paths reach the lookup already resolved, the way the real
+    /// lookup sees them, so prefixes are compared in the same namespace.
+    private func mover(otherDrive: URL) -> Mover {
+        let other = otherDrive.resolvingSymlinksInPath().path
+        return Mover(
+            roots: [root],
+            volumeOf: { url in
+                url.path == other || url.path.hasPrefix(other + "/") ? "drive B" : "drive A"
+            },
+            isNotDownloaded: { _ in false })
+    }
+
+    /// `rollscrub /Volumes --move`, or a scan of a folder holding a mounted
+    /// disk image: the duplicate is on one drive and the root's review folder
+    /// on another. Moving it there is a copy onto that drive and a delete
+    /// from its own, and an eject later strands it on the wrong disk.
+    func testRefusesToMoveAFileOntoADifferentDrive() throws {
+        let keep = try write("keep.jpg", "same bytes")
+        let local = try write("Photos/keep copy.jpg", "same bytes")
+        let mounted = root.appendingPathComponent("Mounted")
+        let remote = try write("Mounted/DCIM/keep.jpg", "same bytes")
+
+        let outcome = try mover(otherDrive: mounted)
+            .move(groups: [group(keep: keep, remove: [local, remote])])
+
+        XCTAssertEqual(outcome.moved.map(\.from), [local.path],
+                       "the copy on the root's own drive should still be set aside")
+        XCTAssertEqual(outcome.skipped.map(\.path), [remote.path])
+        XCTAssertTrue(outcome.skipped.first?.reason.contains("different drive") == true,
+                      outcome.skipped.first?.reason ?? "nothing was skipped")
+        XCTAssertTrue(exists(remote), "a file must never leave the drive it was found on")
+        XCTAssertFalse(exists(reviewDir.appendingPathComponent("Mounted/DCIM/keep.jpg")))
+    }
+
+    /// A review folder left behind as a link to another drive sends every
+    /// move through the link and onto that drive. Looking up the link's own
+    /// volume instead of where it points would wave all of them through.
+    func testRefusesToMoveThroughAReviewFolderThatLinksToAnotherDrive() throws {
+        let elsewhere = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RollScrubElsewhere-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: elsewhere) }
+        try FileManager.default.createSymbolicLink(at: reviewDir, withDestinationURL: elsewhere)
+
+        let keep = try write("A/keep.jpg", "same")
+        let dupe = try write("A/dupe.jpg", "same")
+
+        let outcome = try mover(otherDrive: elsewhere)
+            .move(groups: [group(keep: keep, remove: [dupe])])
+
+        XCTAssertTrue(outcome.moved.isEmpty)
+        XCTAssertTrue(outcome.skipped.first?.reason.contains("different drive") == true,
+                      outcome.skipped.first?.reason ?? "nothing was skipped")
+        XCTAssertTrue(exists(dupe))
+        XCTAssertFalse(exists(elsewhere.appendingPathComponent("A/dupe.jpg")))
+    }
+
+    /// If the drive cannot be identified, a move might be a copy and delete
+    /// across drives. Not knowing is a reason to leave the file alone.
+    func testRefusesToMoveWhenTheDriveCannotBeIdentified() throws {
+        let keep = try write("A/keep.jpg", "same")
+        let dupe = try write("A/dupe.jpg", "same")
+
+        let outcome = try Mover(
+            roots: [root], volumeOf: { _ in nil }, isNotDownloaded: { _ in false }
+        ).move(groups: [group(keep: keep, remove: [dupe])])
+
+        XCTAssertTrue(outcome.moved.isEmpty)
+        XCTAssertTrue(outcome.skipped.first?.reason.contains("same drive") == true,
+                      outcome.skipped.first?.reason ?? "nothing was skipped")
+        XCTAssertTrue(exists(dupe))
+    }
+
+    // MARK: - iCloud
+
+    /// A file iCloud evicted after the scan still has a name and a size, and
+    /// the byte-for-byte check reads all of it, which downloads all of it:
+    /// gigabytes over the network as a side effect of tidying up. Either side
+    /// of the pair being evicted means neither is read.
+    ///
+    /// The pairs differ on purpose. If the comparison ran before the iCloud
+    /// check, it would have read the file and refused it as changed, and the
+    /// reason would say so instead of naming iCloud.
+    func testWillNotReadAFileICloudHasNotDownloaded() throws {
+        let keepA = try write("A/keep.jpg", "same")
+        let evictedDupe = try write("A/dupe.jpg", "placeholder")
+        let evictedKeep = try write("B/keep.jpg", "placeholder")
+        let dupeB = try write("B/dupe.jpg", "other")
+        let evicted: Set<String> = [evictedDupe.path, evictedKeep.path]
+
+        let outcome = try Mover(
+            roots: [root], volumeOf: { _ in "one drive" },
+            isNotDownloaded: { evicted.contains($0) }
+        ).move(groups: [
+            group(keep: keepA, remove: [evictedDupe]),
+            group(keep: evictedKeep, remove: [dupeB]),
+        ])
+
+        XCTAssertTrue(outcome.moved.isEmpty, "an evicted file on either side must stop the move")
+        XCTAssertEqual(outcome.skipped.count, 2)
+        for skip in outcome.skipped {
+            XCTAssertTrue(skip.reason.contains("iCloud"), skip.reason)
+        }
+        XCTAssertTrue(exists(evictedDupe))
+        XCTAssertTrue(exists(dupeB))
+    }
+
+    /// The rule behind the check. An exFAT card or a disk image answers nil
+    /// for "is this in iCloud", and reading nil as evicted would refuse every
+    /// move on every external drive. An iCloud file whose status is missing,
+    /// or downloaded but stale, is not safe to read.
+    func testOnlyAFileICloudClaimsAndHasNotFullyDownloadedCountsAsEvicted() {
+        XCTAssertFalse(ICloudPlaceholder.isNotDownloaded(isUbiquitous: nil, status: nil),
+                       "a drive iCloud knows nothing about is not evicted")
+        XCTAssertFalse(ICloudPlaceholder.isNotDownloaded(isUbiquitous: false, status: nil))
+        XCTAssertFalse(ICloudPlaceholder.isNotDownloaded(isUbiquitous: true, status: .current))
+        XCTAssertTrue(ICloudPlaceholder.isNotDownloaded(isUbiquitous: true, status: .notDownloaded))
+        XCTAssertTrue(ICloudPlaceholder.isNotDownloaded(isUbiquitous: true, status: .downloaded),
+                      "an out-of-date local copy is fetched again when read")
+        XCTAssertTrue(ICloudPlaceholder.isNotDownloaded(isUbiquitous: true, status: nil),
+                      "an iCloud file whose status is unknown must not be read")
+    }
+
     // MARK: - Undo
 
     func testUndoRestoresEveryFile() throws {
