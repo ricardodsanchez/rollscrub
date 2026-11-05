@@ -208,7 +208,7 @@ if result.unreadableFiles > 0 {
     print("Unreadable (skipped): \(result.unreadableFiles)")
 }
 if result.notDownloadedFiles > 0 {
-    print("In iCloud, not here : \(result.notDownloadedFiles) (skipped, reading downloads them)")
+    print("In cloud, not here  : \(result.notDownloadedFiles) (skipped, reading downloads them)")
 }
 if result.filesRejectedByVerification > 0 {
     print("Rejected by verify  : \(result.filesRejectedByVerification)")

@@ -70,7 +70,7 @@ public final class Mover {
             reviewDirectoryName: reviewDirectoryName,
             progress: progress,
             volumeOf: Mover.volumeIdentifier(of:),
-            isNotDownloaded: ICloudPlaceholder.isNotDownloaded)
+            isNotDownloaded: CloudPlaceholder.isNotDownloaded)
     }
 
     /// The lookups are injectable because a test cannot mount a second volume
@@ -110,7 +110,7 @@ public final class Mover {
     ///
     /// A file is moved only when all of these hold: its KEEP counterpart is
     /// still on disk, neither file is inside a managed library, neither file
-    /// is an iCloud placeholder, the review folder
+    /// is online-only in iCloud or another cloud service, the review folder
     /// is on the file's own volume, the two still compare equal across every
     /// byte, and the destination is unoccupied. Anything else is skipped and
     /// reported. A failure never costs you a file.
@@ -211,14 +211,14 @@ public final class Mover {
                 continue
             }
 
-            // Reading an evicted iCloud file downloads the whole thing, and
+            // Reading an online-only file downloads the whole thing, and
             // the comparison below reads every byte of both. A file can be
             // evicted between the scan and the move, so this is asked again
             // here, of the two files about to be read and nothing else.
             if let evicted = [candidate.path, candidate.keep].first(where: isNotDownloaded) {
                 skipped.append(SkippedMove(
                     path: candidate.path,
-                    reason: "iCloud has not downloaded \(evicted); "
+                    reason: "\(evicted) is in the cloud but not downloaded to this Mac; "
                         + "open it once in Finder, then run --move again"))
                 continue
             }

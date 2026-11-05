@@ -303,7 +303,7 @@ final class MoverTests: XCTestCase {
         XCTAssertTrue(outcome.moved.isEmpty, "an evicted file on either side must stop the move")
         XCTAssertEqual(outcome.skipped.count, 2)
         for skip in outcome.skipped {
-            XCTAssertTrue(skip.reason.contains("iCloud"), skip.reason)
+            XCTAssertTrue(skip.reason.contains("not downloaded to this Mac"), skip.reason)
         }
         XCTAssertTrue(exists(evictedDupe))
         XCTAssertTrue(exists(dupeB))
@@ -314,15 +314,40 @@ final class MoverTests: XCTestCase {
     /// move on every external drive. An iCloud file whose status is missing,
     /// or downloaded but stale, is not safe to read.
     func testOnlyAFileICloudClaimsAndHasNotFullyDownloadedCountsAsEvicted() {
-        XCTAssertFalse(ICloudPlaceholder.isNotDownloaded(isUbiquitous: nil, status: nil),
+        XCTAssertFalse(CloudPlaceholder.isNotDownloaded(isUbiquitous: nil, status: nil),
                        "a drive iCloud knows nothing about is not evicted")
-        XCTAssertFalse(ICloudPlaceholder.isNotDownloaded(isUbiquitous: false, status: nil))
-        XCTAssertFalse(ICloudPlaceholder.isNotDownloaded(isUbiquitous: true, status: .current))
-        XCTAssertTrue(ICloudPlaceholder.isNotDownloaded(isUbiquitous: true, status: .notDownloaded))
-        XCTAssertTrue(ICloudPlaceholder.isNotDownloaded(isUbiquitous: true, status: .downloaded),
+        XCTAssertFalse(CloudPlaceholder.isNotDownloaded(isUbiquitous: false, status: nil))
+        XCTAssertFalse(CloudPlaceholder.isNotDownloaded(isUbiquitous: true, status: .current))
+        XCTAssertTrue(CloudPlaceholder.isNotDownloaded(isUbiquitous: true, status: .notDownloaded))
+        XCTAssertTrue(CloudPlaceholder.isNotDownloaded(isUbiquitous: true, status: .downloaded),
                       "an out-of-date local copy is fetched again when read")
-        XCTAssertTrue(ICloudPlaceholder.isNotDownloaded(isUbiquitous: true, status: nil),
+        XCTAssertTrue(CloudPlaceholder.isNotDownloaded(isUbiquitous: true, status: nil),
                       "an iCloud file whose status is unknown must not be read")
+    }
+
+    /// Dropbox, OneDrive and Google Drive keep online-only files as dataless
+    /// files, which iCloud's own status knows nothing about. Reading one,
+    /// as the byte-for-byte check does, downloads all of it. The flag is
+    /// also the cheap half: a flagged file must be answered without the
+    /// millisecond round trip to the file provider.
+    func testAFileMarkedDatalessIsOnlineOnlyWithoutAskingICloud() throws {
+        let neverAsked: () -> (isUbiquitous: Bool?, status: URLUbiquitousItemDownloadingStatus?) = {
+            XCTFail("a dataless file must not cost a file provider round trip")
+            return (nil, nil)
+        }
+        XCTAssertTrue(CloudPlaceholder.isNotDownloaded(
+            flags: UInt32(SF_DATALESS) | UInt32(UF_COMPRESSED), cloudStatus: neverAsked))
+        XCTAssertFalse(CloudPlaceholder.isNotDownloaded(
+            flags: UInt32(UF_COMPRESSED) | UInt32(UF_HIDDEN), cloudStatus: { (nil, nil) }),
+                       "ordinary flags on a local file are not a placeholder")
+        XCTAssertTrue(CloudPlaceholder.isNotDownloaded(
+            flags: 0, cloudStatus: { (true, .notDownloaded) }),
+                      "without the flag, iCloud's own answer still counts")
+        XCTAssertFalse(CloudPlaceholder.isNotDownloaded(flags: nil, cloudStatus: { (nil, nil) }))
+
+        let local = try write("Local/a.jpg", "on this Mac")
+        XCTAssertFalse(CloudPlaceholder.isNotDownloaded(local.path),
+                       "a file written here is on this Mac")
     }
 
     // MARK: - Undo

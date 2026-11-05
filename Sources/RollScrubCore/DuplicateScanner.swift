@@ -5,15 +5,28 @@ public final class DuplicateScanner {
 
     private let config: ScanConfig
     private let progress: ((ScanPhase) -> Void)?
+    private let isNotDownloaded: (String) -> Bool
     /// Files in iCloud that are not on this Mac, counted during enumeration so
     /// the report can account for them rather than leaving a silent gap.
     private var notDownloaded = 0
     /// Scan roots refused because they are inside a managed library.
     private var refusedLibraryRoots: [URL] = []
 
-    public init(config: ScanConfig, progress: ((ScanPhase) -> Void)? = nil) {
+    public convenience init(config: ScanConfig, progress: ((ScanPhase) -> Void)? = nil) {
+        self.init(config: config, progress: progress,
+                  isNotDownloaded: CloudPlaceholder.isNotDownloaded)
+    }
+
+    /// The cloud lookup is injectable because a test cannot make a file
+    /// online-only: only a file provider can.
+    init(
+        config: ScanConfig,
+        progress: ((ScanPhase) -> Void)? = nil,
+        isNotDownloaded: @escaping (String) -> Bool
+    ) {
         self.config = config
         self.progress = progress
+        self.isNotDownloaded = isNotDownloaded
     }
 
     public func scan() -> ScanResult {
@@ -56,14 +69,11 @@ public final class DuplicateScanner {
 
     private func enumerateMedia() -> [MediaFile] {
         // Deliberately cheap: these come straight off the directory entry.
-        // The iCloud keys are NOT here — see the download check below.
+        // The cloud lookup is NOT here — see the download check below.
         let keys: [URLResourceKey] = [
             .isRegularFileKey, .isDirectoryKey, .fileSizeKey, .nameKey,
         ]
         let keySet = Set(keys)
-        let cloudKeys: Set<URLResourceKey> = [
-            .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey,
-        ]
         let fm = FileManager.default
         var files: [MediaFile] = []
         var examined = 0
@@ -109,21 +119,19 @@ public final class DuplicateScanner {
                 guard let size = values.fileSize, size > 0 else { continue }
                 guard let kind = MediaKind(pathExtension: url.pathExtension) else { continue }
 
-                // A file kept in iCloud but evicted from this Mac still has a
-                // name and a size, and reading a single byte of it downloads
-                // the whole thing. Comparing a library that way would pull
-                // gigabytes back over the network, silently, just to look at
-                // it — so these are counted and left alone.
+                // A file kept in iCloud, Dropbox or OneDrive but not on this
+                // Mac still has a name and a size, and reading a single byte
+                // of it downloads the whole thing. Comparing a library that
+                // way would pull gigabytes back over the network, silently,
+                // just to look at it, so these are counted and left alone.
                 //
-                // Asked only of files that already look like media. In an
-                // iCloud-synced folder this lookup is a round trip to the file
-                // provider — about a millisecond each — so requesting it for
+                // Asked only of files that already look like media. The check
+                // reads the file's dataless flag first, about 5 µs, and only
+                // then iCloud's status, a round trip to the file provider of
+                // about a millisecond in an iCloud folder. Requesting that for
                 // every entry the walk touches made scanning a Documents
-                // folder with a node_modules in it take minutes rather than
-                // seconds.
-                if let cloud = try? url.resourceValues(forKeys: cloudKeys),
-                   cloud.isUbiquitousItem == true,
-                   cloud.ubiquitousItemDownloadingStatus != .current {
+                // folder with a node_modules in it take minutes, not seconds.
+                if isNotDownloaded(url.path) {
                     notDownloaded += 1
                     continue
                 }

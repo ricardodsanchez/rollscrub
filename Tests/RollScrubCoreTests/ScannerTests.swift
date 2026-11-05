@@ -206,6 +206,32 @@ final class ScannerTests: XCTestCase {
         XCTAssertTrue(result.groups.isEmpty)
     }
 
+    /// A Dropbox or OneDrive folder full of online-only photos still lists
+    /// every name and size. Hashing them would download the lot, so each is
+    /// counted in the report and left out. The lookup is the slow part in an
+    /// iCloud folder, so it must only be asked about files that already look
+    /// like media: asking it of every entry made a Documents scan take
+    /// minutes.
+    func testCountsAndSkipsAFileThatIsOnlyInTheCloud() throws {
+        let bytes = payload(seed: 47, count: 300_000)
+        let local = try write("Dropbox/beach.jpg", bytes: bytes)
+        let online = try write("Dropbox/beach copy.jpg", bytes: bytes)
+        try write("Dropbox/notes.txt", bytes: bytes)
+        var asked: [String] = []
+
+        let result = DuplicateScanner(config: ScanConfig(root: root), isNotDownloaded: { path in
+            asked.append((path as NSString).lastPathComponent)
+            // The walk reports /private/var/..., the fixture says /var/...
+            return (path as NSString).lastPathComponent == online.lastPathComponent
+        }).scan()
+
+        XCTAssertEqual(result.notDownloadedFiles, 1, "the online-only file must be counted")
+        XCTAssertEqual(result.filesScanned, 1)
+        XCTAssertTrue(result.groups.isEmpty, "an online-only file must not be read to pair it")
+        XCTAssertEqual(Set(asked), [local.lastPathComponent, online.lastPathComponent],
+                       "only media files may cost a cloud lookup")
+    }
+
     /// Pruning only happens to directories met on the way down, so a library
     /// handed over as the root itself was walked in full. Photos keeps an
     /// original and its derivative byte-identical in there, and `--move` then

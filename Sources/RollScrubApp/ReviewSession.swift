@@ -463,8 +463,8 @@ final class ReviewSession: ObservableObject {
     /// silently as a side effect of a duplicate sweep.
     private static func icloudPlaceholderReason(for item: ReviewItem) -> String? {
         for url in [item.candidateURL, item.keepURL]
-        where ICloudPlaceholder.isNotDownloaded(url.path) {
-            return "iCloud has not downloaded this file yet. Open it once in "
+        where CloudPlaceholder.isNotDownloaded(url.path) {
+            return "This file is in the cloud but not downloaded to this Mac yet. Open it once in "
                 + "Finder, then use Retry failed"
         }
         return nil
