@@ -156,6 +156,23 @@ final class ReviewSessionTests: XCTestCase {
         XCTAssertEqual(session.item(id: doomed.id)?.state, .pending)
     }
 
+    /// Apply's real Trash is the developer's own. Every test that removes a
+    /// fixture used to put it there, where it piled up unnoticed, named like
+    /// real photos, until someone emptied the Trash and wondered what it was.
+    func testATestRunNeverSendsFilesToTheRealTrash() async throws {
+        let result = try scanFixture(count: 2)
+        let session = ReviewSession()
+        session.load(scanResult: result, root: root)
+        session.markAllPending(as: .discard)
+
+        await session.apply(removing: Set(session.markedForDiscard.map(\.id)))
+
+        XCTAssertEqual(session.trashedCount, 2)
+        let scratchTrash = ScratchStateDirectory.trashDirectory(in: try XCTUnwrap(scratchState))
+        let landed = (try? FileManager.default.contentsOfDirectory(atPath: scratchTrash.path)) ?? []
+        XCTAssertEqual(landed.count, 2, "trashed fixtures must land in the test's own Trash")
+    }
+
     /// After a successful removal the pair must leave the review queue: gone
     /// from the counts, gone from every filter that drives the sidebar list.
     func testTrashedPairsLeaveTheQueueAndTheCounts() async throws {
