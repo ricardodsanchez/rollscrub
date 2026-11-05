@@ -92,6 +92,10 @@ struct ComparisonView: View {
     private func preparePlayers() async {
         stopPlayers()
         guard item.isVideo else { return }
+        // A player streams the file, which downloads an online-only one.
+        guard !OnlineOnly.isNotDownloaded(item.keepURL),
+              !OnlineOnly.isNotDownloaded(item.candidateURL)
+        else { return }
         leftPlayer = AVPlayer(url: item.keepURL)
         rightPlayer = AVPlayer(url: item.candidateURL)
     }
@@ -249,6 +253,7 @@ struct FilePane: View {
 
     @State private var metadata = FileMetadata()
     @State private var exists = true
+    @State private var onlineOnly = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -265,6 +270,12 @@ struct FilePane: View {
                     ContentUnavailableView(
                         "File not found", systemImage: "exclamationmark.triangle",
                         description: Text("It may have been moved or deleted outside RollScrub."))
+                } else if onlineOnly {
+                    ContentUnavailableView(
+                        "Not downloaded", systemImage: "icloud.and.arrow.down",
+                        description: Text("This file is in the cloud, not on this Mac. "
+                            + "Showing it here would download it. Open it once in Finder "
+                            + "to download it, then come back."))
                 } else if let player {
                     VideoPlayer(player: player)
                 } else {
@@ -285,6 +296,7 @@ struct FilePane: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .task(id: url) {
             exists = FileManager.default.fileExists(atPath: url.path)
+            onlineOnly = exists && OnlineOnly.isNotDownloaded(url)
             metadata = await FileMetadata.load(for: url)
         }
     }

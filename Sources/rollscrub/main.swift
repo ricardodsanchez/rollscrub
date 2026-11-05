@@ -1,6 +1,13 @@
 import RollScrubCore
 import Foundation
 
+// Before anything reads a file: an online-only file the checks miss then
+// fails to read instead of downloading in full.
+if !CloudPlaceholder.refuseDownloadsForThisProcess() {
+    FileHandle.standardError.write(Data(
+        "warning: macOS would not block cloud downloads for this run\n".utf8))
+}
+
 let usage = """
 rollscrub — find duplicate photos and videos (read-only)
 
@@ -130,6 +137,22 @@ for rootURL in rootURLs {
     }
 }
 
+// Photos, Final Cut, iMovie, Lightroom and the rest keep derivatives beside their
+// originals and track both in a catalogue. The walk prunes a library it finds
+// below a root, but a root or --include that is already inside one would be
+// walked in full, and its files offered for removal.
+for scanRoot in ScanConfig(roots: rootURLs, includes: includes).scanRoots {
+    if let library = SkipRules.managedLibrary(containing: scanRoot.path) {
+        fail("""
+            will not scan \(scanRoot.path)
+              It is inside \(library.path), a library its app manages.
+              Moving files out of a library corrupts it. Use the app's own
+              duplicate tools for what is inside, and scan the folder that
+              holds the library to check everything else.
+            """)
+    }
+}
+
 // MARK: - Scan
 
 func log(_ message: String) {
@@ -192,7 +215,7 @@ if result.unreadableFiles > 0 {
     print("Unreadable (skipped): \(result.unreadableFiles)")
 }
 if result.notDownloadedFiles > 0 {
-    print("In iCloud, not here : \(result.notDownloadedFiles) (skipped, reading downloads them)")
+    print("In cloud, not here  : \(result.notDownloadedFiles) (skipped, reading downloads them)")
 }
 if result.filesRejectedByVerification > 0 {
     print("Rejected by verify  : \(result.filesRejectedByVerification)")

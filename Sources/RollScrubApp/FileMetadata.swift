@@ -27,6 +27,9 @@ struct FileMetadata {
         let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
         meta.sizeBytes = Int64(values?.fileSize ?? 0)
         meta.modified = values?.contentModificationDate
+        // Size and date come from the directory entry; everything else opens
+        // the file, which would download an online-only one.
+        guard !OnlineOnly.isNotDownloaded(url) else { return meta }
 
         if MediaKindHelper.isVideo(url) {
             let asset = AVURLAsset(url: url)

@@ -182,6 +182,157 @@ final class ScannerTests: XCTestCase {
                       "a managed library's own copies are not duplicates to remove")
     }
 
+    /// The same corruption, for every other app that keeps media in a package
+    /// it catalogues. An iPhoto library is still on disk after Photos migrates
+    /// it, holding the same masters as the new library, so a home-folder scan
+    /// pairs the two and offers one of them up for removal.
+    func testEveryKindOfManagedLibraryIsSkipped() throws {
+        let bytes = payload(seed: 46, count: 300_000)
+        try write("Loose/clip.mov", bytes: bytes)
+        let libraries = [
+            "iPhoto Library.photolibrary/Masters/2012/clip.mov",
+            "iMovie Library.imovielibrary/Event/Original Media/clip.mov",
+            "iMovie Theater.theater/Shared/clip.mov",
+            "Capture One.cocatalog/Originals/clip.mov",
+            "TV Library.tvlibrary/Media/clip.mov",
+            "Music Library.musiclibrary/Media/clip.mov",
+        ]
+        for path in libraries { try write(path, bytes: bytes) }
+
+        let result = scan()
+
+        XCTAssertEqual(result.filesScanned, 1,
+                       "only the loose clip is outside a library; found \(result.filesScanned)")
+        XCTAssertTrue(result.groups.isEmpty)
+    }
+
+    /// A Dropbox or OneDrive folder full of online-only photos still lists
+    /// every name and size. Hashing them would download the lot, so each is
+    /// counted in the report and left out. The lookup is the slow part in an
+    /// iCloud folder, so it must only be asked about files that already look
+    /// like media: asking it of every entry made a Documents scan take
+    /// minutes.
+    func testCountsAndSkipsAFileThatIsOnlyInTheCloud() throws {
+        let bytes = payload(seed: 47, count: 300_000)
+        let local = try write("Dropbox/beach.jpg", bytes: bytes)
+        let online = try write("Dropbox/beach copy.jpg", bytes: bytes)
+        try write("Dropbox/notes.txt", bytes: bytes)
+        var asked: [String] = []
+
+        let result = DuplicateScanner(config: ScanConfig(root: root), isNotDownloaded: { path in
+            asked.append((path as NSString).lastPathComponent)
+            // The walk reports /private/var/..., the fixture says /var/...
+            return (path as NSString).lastPathComponent == online.lastPathComponent
+        }).scan()
+
+        XCTAssertEqual(result.notDownloadedFiles, 1, "the online-only file must be counted")
+        XCTAssertEqual(result.filesScanned, 1)
+        XCTAssertTrue(result.groups.isEmpty, "an online-only file must not be read to pair it")
+        XCTAssertEqual(Set(asked), [local.lastPathComponent, online.lastPathComponent],
+                       "only media files may cost a cloud lookup")
+    }
+
+    /// Music and TV keep their media beside the library package, not in it,
+    /// and find each file by its path. A home-folder scan pairs a music video
+    /// in there with the copy you downloaded, and moving the Music one leaves
+    /// a track that says it cannot be found. A Media folder of your own, with
+    /// no library beside it, must still be scanned.
+    func testMusicTVAndITunesMediaFoldersAreSkipped() throws {
+        let bytes = payload(seed: 48, count: 300_000)
+        try write("Downloads/video.mov", bytes: bytes)
+        try write("Music/Music/Music Library.musiclibrary/Library.musicdb", bytes: Data("db".utf8))
+        try write("Music/Music/Media.localized/Music Videos/video.mov", bytes: bytes)
+        try write("Movies/TV/TV Library.tvlibrary/Library.tvdb", bytes: Data("db".utf8))
+        try write("Movies/TV/Media.localized/Home Videos/video.mov", bytes: bytes)
+        try write("Music/iTunes/iTunes Library.itl", bytes: Data("itl".utf8))
+        try write("Music/iTunes/iTunes Media/Movies/video.mov", bytes: bytes)
+        try write("Projects/Site/Media/video.mov", bytes: bytes)
+
+        let result = scan()
+
+        XCTAssertEqual(result.filesScanned, 2,
+                       "only Downloads and the ordinary Media folder are scanned")
+        XCTAssertEqual(Set(result.groups.flatMap(\.allPaths).map {
+            URL(fileURLWithPath: $0).deletingLastPathComponent().lastPathComponent
+        }), ["Downloads", "Media"])
+    }
+
+    /// Pruning only happens to directories met on the way down, so a library
+    /// handed over as the root itself was walked in full. Photos keeps an
+    /// original and its derivative byte-identical in there, and `--move` then
+    /// took one of them out, corrupting the library without a word.
+    func testWillNotWalkALibraryGivenAsTheScanRoot() throws {
+        let bytes = payload(seed: 41, count: 300_000)
+        let library = root.appendingPathComponent("Photos Library.photoslibrary")
+        try write("Photos Library.photoslibrary/originals/0/holiday.jpg", bytes: bytes)
+        try write("Photos Library.photoslibrary/resources/derivatives/holiday.jpg", bytes: bytes)
+
+        let result = DuplicateScanner(config: ScanConfig(root: library)).scan()
+
+        XCTAssertEqual(result.filesScanned, 0, "a library passed as the root must not be walked")
+        XCTAssertTrue(result.groups.isEmpty)
+        XCTAssertEqual(result.managedLibraryRoots, [library],
+                       "the report must say what was refused, not show a clean result")
+    }
+
+    /// `rollscrub ~/Pictures --include "Photos Library.photoslibrary/originals"`
+    /// starts the walk inside the library, below the one directory the prune
+    /// would have caught. The other includes must still be scanned: refusing
+    /// one root is not a reason to drop the rest. The suffix is upper case
+    /// because Finder treats it as the same package either way.
+    func testWillNotWalkAnIncludeThatReachesIntoALibrary() throws {
+        let bytes = payload(seed: 42, count: 300_000)
+        try write("Loose/holiday.jpg", bytes: payload(seed: 43, count: 300_000))
+        try write("Old.APLIBRARY/Masters/2019/holiday.jpg", bytes: bytes)
+        try write("Old.APLIBRARY/Masters/2020/holiday.jpg", bytes: bytes)
+
+        let result = DuplicateScanner(config: ScanConfig(
+            root: root, includes: ["Old.APLIBRARY/Masters", "Loose"])).scan()
+
+        XCTAssertEqual(result.filesScanned, 1, "only the include outside the library is walked")
+        XCTAssertTrue(result.groups.isEmpty,
+                      "two masters inside an Aperture library are not duplicates to remove")
+        XCTAssertEqual(result.managedLibraryRoots.map(\.lastPathComponent), ["Masters"])
+    }
+
+    /// The system follows a symlink in the middle of a path, so a root of
+    /// `Linked/originals`, where Linked points at a library, walks the
+    /// library's originals although no part of the path as typed names one.
+    func testWillNotWalkARootThatReachesALibraryThroughASymlink() throws {
+        let bytes = payload(seed: 44, count: 300_000)
+        try write("Photos Library.photoslibrary/originals/0/holiday.jpg", bytes: bytes)
+        try write("Photos Library.photoslibrary/originals/1/holiday.jpg", bytes: bytes)
+        let link = root.appendingPathComponent("Linked")
+        try FileManager.default.createSymbolicLink(
+            at: link, withDestinationURL: root.appendingPathComponent("Photos Library.photoslibrary"))
+
+        let result = DuplicateScanner(config: ScanConfig(
+            root: link.appendingPathComponent("originals"))).scan()
+
+        XCTAssertEqual(result.filesScanned, 0, "a link into a library leads into a library")
+        XCTAssertTrue(result.groups.isEmpty)
+    }
+
+    /// `..` after a symlink goes up from wherever the link led, not from the
+    /// link. `--include "Linked/.."`, with Linked pointing at a library's
+    /// originals, walks the library itself, while the same path tidied up as
+    /// text reads as the harmless folder holding the link.
+    func testWillNotWalkAnIncludeThatClimbsIntoALibraryFromInsideIt() throws {
+        let bytes = payload(seed: 45, count: 300_000)
+        try write("Photos Library.photoslibrary/originals/0/holiday.jpg", bytes: bytes)
+        try write("Photos Library.photoslibrary/resources/holiday.jpg", bytes: bytes)
+        let outer = root.appendingPathComponent("Outer")
+        try FileManager.default.createDirectory(at: outer, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: outer.appendingPathComponent("Linked"),
+            withDestinationURL: root.appendingPathComponent("Photos Library.photoslibrary/originals"))
+
+        let result = DuplicateScanner(config: ScanConfig(root: outer, includes: ["Linked/.."])).scan()
+
+        XCTAssertEqual(result.filesScanned, 0, "Linked/.. is the library, whatever the text says")
+        XCTAssertTrue(result.groups.isEmpty)
+    }
+
     /// A home folder with a few checked-out projects in it holds far more
     /// files under .git, .build and node_modules than everywhere else put
     /// together, and none of them are anyone's photos. Walking them made a

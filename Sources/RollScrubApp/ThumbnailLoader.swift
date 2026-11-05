@@ -60,6 +60,9 @@ final class ThumbnailLoader: ObservableObject {
         url: URL, size: CGFloat, scale: CGFloat
     ) async -> NSImage? {
         let maxPixel = size * scale
+        // Every route below reads the file, and QuickLook does it outside the
+        // kernel switch this process set, so an online-only file gets none.
+        guard !OnlineOnly.isNotDownloaded(url) else { return nil }
 
         if MediaKindHelper.isVideo(url) {
             if let frame = await videoFrame(url: url, maxPixel: maxPixel) { return frame }

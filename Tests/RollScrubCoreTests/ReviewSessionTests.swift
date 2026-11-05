@@ -156,6 +156,43 @@ final class ReviewSessionTests: XCTestCase {
         XCTAssertEqual(session.item(id: doomed.id)?.state, .pending)
     }
 
+    /// Apply's real Trash is the developer's own. Every test that removes a
+    /// fixture used to put it there, where it piled up unnoticed, named like
+    /// real photos, until someone emptied the Trash and wondered what it was.
+    func testATestRunNeverSendsFilesToTheRealTrash() async throws {
+        let result = try scanFixture(count: 2)
+        let session = ReviewSession()
+        session.load(scanResult: result, root: root)
+        session.markAllPending(as: .discard)
+
+        await session.apply(removing: Set(session.markedForDiscard.map(\.id)))
+
+        XCTAssertEqual(session.trashedCount, 2)
+        let scratchTrash = ScratchStateDirectory.trashDirectory(in: try XCTUnwrap(scratchState))
+        let landed = (try? FileManager.default.contentsOfDirectory(atPath: scratchTrash.path)) ?? []
+        XCTAssertEqual(landed.count, 2, "trashed fixtures must land in the test's own Trash")
+    }
+
+    /// The redirect is opt-in per test class. A future test that applies
+    /// without it must fail loudly rather than send fixtures, named like real
+    /// photos, to the developer's Trash. Not proved by removing the guard:
+    /// that would put this test's fixture in the real Trash.
+    func testTheRealTrashRefusesToWorkUnderTests() async throws {
+        let result = try scanFixture(count: 1)
+        let session = ReviewSession()
+        session.load(scanResult: result, root: root)
+        session.markAllPending(as: .discard)
+        ReviewSession.trashOverride = nil
+
+        await session.apply(removing: Set(session.markedForDiscard.map(\.id)))
+
+        let item = try XCTUnwrap(session.items.first)
+        XCTAssertTrue(exists(item.candidateURL))
+        guard case .failed(let reason) = item.state, reason.contains("real Trash") else {
+            return XCTFail("expected the real Trash to refuse, got \(item.state)")
+        }
+    }
+
     /// After a successful removal the pair must leave the review queue: gone
     /// from the counts, gone from every filter that drives the sidebar list.
     func testTrashedPairsLeaveTheQueueAndTheCounts() async throws {
@@ -193,6 +230,162 @@ final class ReviewSessionTests: XCTestCase {
             XCTAssertFalse(exists(item.candidateURL), "the duplicate should be gone from disk")
             XCTAssertTrue(exists(item.keepURL), "the kept copy must survive")
         }
+    }
+
+    /// Verifying a batch of large videos takes minutes. Checking every file
+    /// first and trashing them all at the end means a file that changed in
+    /// those minutes goes to the Trash on the strength of a stale check, and
+    /// the copy kept is no longer the same photo.
+    func testEachFileIsVerifiedImmediatelyBeforeItIsTrashed() async throws {
+        let result = try scanFixture(count: 2)
+        let session = ReviewSession()
+        session.load(scanResult: result, root: root)
+        session.markAllPending(as: .discard)
+        let first = session.items[0], second = session.items[1]
+
+        let trash = root.appendingPathComponent("Trash")
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        var edited = false
+        ReviewSession.trashOverride = { urls in
+            // The second file changes while the first is being dealt with.
+            if !edited {
+                edited = true
+                try? Data("edited after the scan".utf8).write(to: second.candidateURL)
+            }
+            for url in urls {
+                try? FileManager.default.moveItem(
+                    at: url, to: trash.appendingPathComponent(UUID().uuidString))
+            }
+            return [:]
+        }
+        defer { ReviewSession.trashOverride = nil }
+
+        await session.apply(removing: Set(session.markedForDiscard.map(\.id)))
+
+        XCTAssertEqual(session.item(id: first.id)?.state, .trashed)
+        XCTAssertTrue(exists(second.candidateURL),
+                      "a file that changed after its check must not be trashed on that check")
+        guard case .failed = session.item(id: second.id)?.state else {
+            return XCTFail("expected the changed file to fail verification")
+        }
+    }
+
+    /// The app's Apply is its own path to the Trash, separate from Mover, and
+    /// a review can be built from a saved session or a manifest as well as a
+    /// fresh scan. A pair with either file inside a Photos library must fail
+    /// with a reason rather than send anything to the Trash.
+    func testAPairWithAFileInsideALibraryIsNeverTrashed() async throws {
+        let payload = String(repeating: "library pair", count: 40_000)
+        let loose = try write("Loose/a.jpg", payload)
+        let inside = try write("Photos Library.photoslibrary/originals/0/a.jpg", payload)
+        let otherLoose = try write("Loose/b.jpg", payload + "b")
+        let derivative = try write("Photos Library.photoslibrary/resources/b.jpg", payload + "b")
+        let size = Int64(payload.utf8.count)
+        let result = ScanResult(
+            roots: [root], includes: [], startedAt: Date(), duration: 0,
+            filesScanned: 4, unreadableFiles: 0, notDownloadedFiles: 0,
+            filesRejectedByVerification: 0,
+            groups: [
+                DuplicateGroup(kind: .photo, size: size, keep: loose.path, remove: [inside.path]),
+                DuplicateGroup(kind: .photo, size: size + 1,
+                               keep: derivative.path, remove: [otherLoose.path]),
+            ])
+        let session = ReviewSession()
+        session.load(scanResult: result, root: root)
+        session.markAllPending(as: .discard)
+
+        let trash = root.appendingPathComponent("Trash")
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        ReviewSession.trashOverride = { urls in
+            for url in urls {
+                try? FileManager.default.moveItem(
+                    at: url, to: trash.appendingPathComponent(UUID().uuidString))
+            }
+            return [:]
+        }
+        defer { ReviewSession.trashOverride = nil }
+
+        await session.apply(removing: Set(session.markedForDiscard.map(\.id)))
+
+        XCTAssertTrue(exists(inside), "a file inside a library must never be trashed")
+        XCTAssertTrue(exists(otherLoose), "nor may a file be trashed in favour of a library's copy")
+        XCTAssertEqual(session.items.count, 2)
+        for item in session.items {
+            guard case .failed(let reason) = item.state, reason.contains("library") else {
+                return XCTFail("\(item.filename) should have failed over the library, is \(item.state)")
+            }
+        }
+    }
+
+    /// Versions before the guard could move a library's file out with
+    /// `--include`, mirrored into the review folder as
+    /// `_duplicates_review/Photos Library.photoslibrary/...`, with a keeper
+    /// outside the library. Trashing that parked copy throws away the one
+    /// file that can put the library right; Keep restores it.
+    func testAFileTakenOutOfALibraryByAnOlderVersionIsNotTrashed() async throws {
+        let kept = try write("Loose/a.jpg", "same bytes")
+        let parked = try write(SkipRules.reviewDirectoryName
+            + "/Photos Library.photoslibrary/originals/0/a.jpg", "same bytes")
+        let from = root.appendingPathComponent("Photos Library.photoslibrary/originals/0/a.jpg")
+        let manifest = MoveManifest(root: root.path, createdAt: Date(), records: [
+            MoveRecord(from: from.path, to: parked.path, sizeBytes: 10, verifiedAgainst: kept.path),
+        ])
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let url = reviewDir.appendingPathComponent("_rollscrub_manifest_old.json")
+        try encoder.encode(manifest).write(to: url)
+
+        let session = ReviewSession()
+        session.load(manifestURL: url)
+        session.markAllPending(as: .discard)
+        let trash = root.appendingPathComponent("Trash")
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        ReviewSession.trashOverride = { urls in
+            for url in urls {
+                try? FileManager.default.moveItem(
+                    at: url, to: trash.appendingPathComponent(UUID().uuidString))
+            }
+            return [:]
+        }
+        defer { ReviewSession.trashOverride = nil }
+
+        await session.apply(removing: Set(session.markedForDiscard.map(\.id)))
+
+        XCTAssertTrue(exists(parked), "the copy that can repair the library must not be trashed")
+        guard case .failed(let reason) = session.items.first?.state, reason.contains("library") else {
+            return XCTFail("expected a library refusal, got \(String(describing: session.items.first?.state))")
+        }
+    }
+
+    /// Apply works through the batch one file at a time, and the context
+    /// menu and Mark All stay usable while it does. Somebody who spots a
+    /// photo they want to keep and switches it mid-run must not find it in
+    /// the Trash anyway.
+    func testAFileSwitchedToKeepDuringApplyIsNotTrashed() async throws {
+        let result = try scanFixture(count: 2)
+        let session = ReviewSession()
+        session.load(scanResult: result, root: root)
+        session.markAllPending(as: .discard)
+        let first = session.items[0], second = session.items[1]
+
+        let trash = root.appendingPathComponent("Trash")
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        ReviewSession.trashOverride = { urls in
+            // While the first file is being trashed, the second is switched.
+            session.mark(second.id, as: .keep)
+            for url in urls {
+                try? FileManager.default.moveItem(
+                    at: url, to: trash.appendingPathComponent(UUID().uuidString))
+            }
+            return [:]
+        }
+        defer { ReviewSession.trashOverride = nil }
+
+        await session.apply(removing: Set(session.markedForDiscard.map(\.id)))
+
+        XCTAssertEqual(session.item(id: first.id)?.state, .trashed)
+        XCTAssertTrue(exists(second.candidateURL), "a file switched to Keep was trashed")
+        XCTAssertEqual(session.item(id: second.id)?.state, .kept)
     }
 
     func testKeepDecisionLeavesAScannedFileWhereItIs() async throws {

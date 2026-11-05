@@ -22,13 +22,18 @@ Apple silicon and Intel
   back.
 - **Every byte is checked again before a file moves**, in case it changed
   after the scan.
-- **Photos, Final Cut, Aperture and Lightroom libraries are skipped.** These
-  are the single-file libraries those apps manage for you. They keep copies of
-  your originals on purpose, and removing one would break the library.
-  Lightroom Classic is different: its photos sit in ordinary folders, and
-  RollScrub scans them like any others.
-- **iCloud files that aren't on your Mac are skipped**, so a scan never
-  downloads your whole photo library.
+- **Nothing moves to a different drive.** The command line tool sets
+  duplicates aside on the drive they were found on.
+- **Libraries that apps manage for you are skipped**: Photos, iPhoto, Final
+  Cut, iMovie, Aperture, Lightroom and Capture One libraries, and the media
+  folders of Music and TV. They keep copies of your originals on purpose, and
+  removing one would break the library. RollScrub won't scan a folder inside
+  one either. Lightroom Classic is different: its photos sit in ordinary
+  folders, and RollScrub scans them like any others.
+- **Cloud files that aren't on your Mac are skipped**, so a scan never
+  downloads your whole photo library, and their previews say "Not
+  downloaded". This is tested with iCloud Drive. Dropbox and OneDrive work the
+  same way on current macOS, but haven't been tested.
 
 ## Command line
 

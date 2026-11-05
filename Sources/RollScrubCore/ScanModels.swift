@@ -15,7 +15,7 @@ public struct ScanConfig {
     }
 
     /// The directories actually walked.
-    var scanRoots: [URL] {
+    public var scanRoots: [URL] {
         includes.isEmpty
             ? roots
             : roots.flatMap { root in includes.map { root.appendingPathComponent($0) } }
@@ -48,7 +48,7 @@ public struct ScanResult {
     public let duration: TimeInterval
     public let filesScanned: Int
     public let unreadableFiles: Int
-    /// Kept in iCloud but not present on this Mac. Reading one downloads it in
+    /// Kept in iCloud, Dropbox or the like but not on this Mac. Reading one downloads it in
     /// full, so they are skipped rather than silently pulled over the network.
     public let notDownloadedFiles: Int
     /// Files the head+tail signature clustered together but that byte-for-byte
@@ -56,6 +56,10 @@ public struct ScanResult {
     /// REMOVE without the verification pass.
     public let filesRejectedByVerification: Int
     public let groups: [DuplicateGroup]
+    /// Scan roots that were, or were inside, a managed library and so were
+    /// not walked at all. The CLI and the app both refuse these before
+    /// scanning; this is the record if something reaches the scanner anyway.
+    public var managedLibraryRoots: [URL] = []
 
     public var redundantFileCount: Int {
         groups.reduce(0) { $0 + $1.remove.count }
